@@ -166,25 +166,7 @@ export default function OrdersPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur-lg">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-bold">
-            <Package className="size-4" />
-          </div>
-          <div className="flex flex-col">
-            <h1 className="text-sm font-semibold leading-tight">
-              聚水潭订单管理
-            </h1>
-            <p className="text-xs text-muted-foreground leading-tight">
-              订单查询 · /open/orders/single/query
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+    <div className="p-4 sm:p-6 space-y-6">
         {/* ── Filters Card ───────────────────────────────────────────── */}
         <Card className="mb-6">
           <CardHeader>
@@ -243,7 +225,7 @@ export default function OrdersPage() {
                 <label className="text-xs font-medium text-muted-foreground">
                   订单状态
                 </label>
-                <Select value={status} onValueChange={setStatus}>
+                <Select value={status} onValueChange={(v) => setStatus(v ?? "")}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="全部状态" />
                   </SelectTrigger>
@@ -437,7 +419,6 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
         )}
-      </main>
     </div>
   );
 }

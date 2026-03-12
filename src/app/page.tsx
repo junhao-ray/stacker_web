@@ -1,65 +1,191 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import {
+  Package,
+  PackageOpen,
+  TrendingUp,
+  AlertTriangle,
+  Boxes,
+  Ruler,
+} from "lucide-react";
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+
+import {
+  WAREHOUSE_STATS,
+  OUTBOUND_TASKS,
+  getSpecDistribution,
+} from "@/lib/mock-data";
+
+const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  pending: { label: "待拣货", variant: "outline" },
+  picking: { label: "拣货中", variant: "secondary" },
+  completed: { label: "已出库", variant: "default" },
+  cancelled: { label: "已取消", variant: "destructive" },
+};
+
+export default function DashboardPage() {
+  const stats = WAREHOUSE_STATS;
+  const recentTasks = OUTBOUND_TASKS.slice(0, 8);
+  const specDist = getSpecDistribution();
+
+  const statCards = [
+    {
+      title: "种子品种",
+      value: stats.totalProducts.toLocaleString(),
+      subtitle: "已录入品种总数",
+      icon: Package,
+    },
+    {
+      title: "库存总量",
+      value: stats.totalStock.toLocaleString(),
+      subtitle: "袋 / 罐",
+      icon: Boxes,
+    },
+    {
+      title: "待出库",
+      value: stats.pendingTasks.toString(),
+      subtitle: "待拣货任务",
+      icon: PackageOpen,
+    },
+    {
+      title: "今日出库",
+      value: stats.todayCompleted.toString(),
+      subtitle: "已完成任务",
+      icon: TrendingUp,
+    },
+    {
+      title: "包装规格",
+      value: stats.specCount.toString(),
+      subtitle: "种规格类型",
+      icon: Ruler,
+    },
+    {
+      title: "低库存预警",
+      value: stats.lowStockCount.toString(),
+      subtitle: "需补货品种",
+      icon: AlertTriangle,
+    },
+  ];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="p-4 sm:p-6 space-y-6">
+      {/* ── 统计卡片 ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        {statCards.map((card) => (
+          <Card key={card.title} size="sm">
+            <CardHeader className="flex-row items-center justify-between space-y-0 pb-1">
+              <CardDescription className="text-xs">
+                {card.title}
+              </CardDescription>
+              <card.icon className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold tabular-nums">
+                {card.value}
+              </div>
+              <p className="text-xs text-muted-foreground">{card.subtitle}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-5">
+        {/* ── 最近出库任务 ───────────────────────────────────────── */}
+        <Card className="lg:col-span-3">
+          <CardHeader>
+            <CardTitle>最近出库任务</CardTitle>
+            <CardDescription>近期创建的出库任务列表</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">任务编号</TableHead>
+                  <TableHead>订单号</TableHead>
+                  <TableHead>品种 / 数量</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="pr-4 text-right">创建时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentTasks.map((task) => {
+                  const st = STATUS_MAP[task.status] ?? STATUS_MAP.pending;
+                  return (
+                    <TableRow key={task.taskNo}>
+                      <TableCell className="pl-4 font-mono text-xs">
+                        {task.taskNo}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {task.orderNo}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">
+                          {task.items.length} 种 /{" "}
+                          {task.items.reduce((s, i) => s + i.quantity, 0)} 件
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={st.variant}>{st.label}</Badge>
+                      </TableCell>
+                      <TableCell className="pr-4 text-right text-xs text-muted-foreground">
+                        {task.createdAt.slice(5, 16)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* ── 规格分布 ─────────────────────────────────────────── */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>规格库存分布</CardTitle>
+            <CardDescription>各包装规格对应的品种数与库存量</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {specDist.map((d) => {
+              const maxStock = Math.max(...specDist.map((s) => s.stock), 1);
+              const pct = Math.round((d.stock / maxStock) * 100);
+              return (
+                <div key={d.specId} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">
+                      #{d.specId} {d.label}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {d.count} 种 · {d.stock.toLocaleString()} 件
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
