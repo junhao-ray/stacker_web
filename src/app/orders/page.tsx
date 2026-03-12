@@ -11,6 +11,9 @@ import {
   AlertCircle,
   Inbox,
   FileText,
+  ShoppingCart,
+  Clock,
+  CalendarDays,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,7 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 
 import type { Order, OrderQueryResponse } from "@/lib/jushuitan";
 
@@ -58,21 +60,17 @@ const ORDER_STATUSES = [
 
 type StatusVariant = "default" | "secondary" | "destructive" | "outline";
 
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  WaitPay: "outline",
-  WaitConfirm: "secondary",
-  Confirmed: "default",
-  Sent: "default",
-  Delivered: "secondary",
-  Cancelled: "destructive",
+const STATUS_CONFIG: Record<string, { variant: StatusVariant; label: string; dotColor: string }> = {
+  WaitPay:     { variant: "outline",     label: "待付款", dotColor: "bg-amber-500" },
+  WaitConfirm: { variant: "secondary",   label: "待确认", dotColor: "bg-blue-500" },
+  Confirmed:   { variant: "default",     label: "已确认", dotColor: "bg-emerald-500" },
+  Sent:        { variant: "default",     label: "已发货", dotColor: "bg-teal-500" },
+  Delivered:   { variant: "secondary",   label: "已签收", dotColor: "bg-violet-500" },
+  Cancelled:   { variant: "destructive", label: "已取消", dotColor: "bg-red-500" },
 };
 
-function getStatusLabel(status: string) {
-  return ORDER_STATUSES.find((s) => s.value === status)?.label ?? status;
-}
-
-function getStatusVariant(status: string): StatusVariant {
-  return STATUS_VARIANT[status] ?? "outline";
+function getStatusConfig(status: string) {
+  return STATUS_CONFIG[status] ?? { variant: "outline" as StatusVariant, label: status, dotColor: "bg-gray-500" };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -166,161 +164,190 @@ export default function OrdersPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
-        {/* ── Filters Card ───────────────────────────────────────────── */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="size-4 text-muted-foreground" />
-              查询条件
-            </CardTitle>
-            <CardDescription>
-              时间范围最长 7 天 · 并发上限 5 次/秒 · 频率上限 100 次/分/店
-            </CardDescription>
-            <CardAction>
-              <Button
-                size="lg"
-                onClick={handleSearch}
-                disabled={loading}
-                className="gap-2"
+    <div className="p-4 sm:p-6 space-y-8">
+      {/* ── 页面标题 ─────────────────────────────────────────────── */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">订单查询</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          通过聚水潭开放平台查询订单数据
+        </p>
+      </div>
+
+      {/* ── 查询条件 ─────────────────────────────────────────────── */}
+      <Card className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent" />
+        <CardHeader className="relative">
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="size-4 text-muted-foreground" />
+            查询条件
+          </CardTitle>
+          <CardDescription>
+            时间范围最长 7 天 · 并发上限 5 次/秒 · 频率上限 100 次/分/店
+          </CardDescription>
+          <CardAction>
+            <Button
+              size="lg"
+              onClick={handleSearch}
+              disabled={loading}
+              className="gap-2"
+            >
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Search className="size-4" />
+              )}
+              {loading ? "查询中…" : "查询订单"}
+            </Button>
+          </CardAction>
+        </CardHeader>
+
+        <CardContent className="relative">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* 修改起始时间 */}
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <CalendarDays className="size-3" />
+                修改起始时间
+              </label>
+              <Input
+                type="datetime-local"
+                value={modifiedBegin}
+                onChange={(e) => setModifiedBegin(e.target.value)}
+              />
+            </div>
+
+            {/* 修改结束时间 */}
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <CalendarDays className="size-3" />
+                修改结束时间
+              </label>
+              <Input
+                type="datetime-local"
+                value={modifiedEnd}
+                onChange={(e) => setModifiedEnd(e.target.value)}
+              />
+            </div>
+
+            {/* 订单状态 */}
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Clock className="size-3" />
+                订单状态
+              </label>
+              <Select
+                value={status || null}
+                onValueChange={(v) => setStatus(v === "全部" ? "" : (v ?? ""))}
               >
-                {loading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Search className="size-4" />
-                )}
-                {loading ? "查询中…" : "查询订单"}
-              </Button>
-            </CardAction>
-          </CardHeader>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="全部状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="全部">全部状态</SelectItem>
+                  {ORDER_STATUSES.filter(s => s.value !== "").map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <CardContent>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {/* 修改起始时间 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  修改起始时间
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={modifiedBegin}
-                  onChange={(e) => setModifiedBegin(e.target.value)}
-                />
-              </div>
+            {/* 线上订单号 */}
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <FileText className="size-3" />
+                线上订单号
+              </label>
+              <Input
+                value={soId}
+                onChange={(e) => setSoId(e.target.value)}
+                placeholder="多个用逗号分隔"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-              {/* 修改结束时间 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  修改结束时间
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={modifiedEnd}
-                  onChange={(e) => setModifiedEnd(e.target.value)}
-                />
-              </div>
-
-              {/* 订单状态 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  订单状态
-                </label>
-                <Select value={status} onValueChange={(v) => setStatus(v ?? "")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="全部状态" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ORDER_STATUSES.map((s) => (
-                      <SelectItem key={s.value} value={s.value || "__all__"}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 线上订单号 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  线上订单号
-                </label>
-                <Input
-                  value={soId}
-                  onChange={(e) => setSoId(e.target.value)}
-                  placeholder="多个用逗号分隔"
-                />
-              </div>
+      {/* ── Error Alert ────────────────────────────────────────────── */}
+      {error && (
+        <Card className="border-destructive/30 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-rose-500/5 to-transparent" />
+          <CardContent className="relative flex items-start gap-3 pt-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10">
+              <AlertCircle className="size-4 text-destructive" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-destructive">查询失败</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">{error}</p>
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* ── Error Alert ────────────────────────────────────────────── */}
-        {error && (
-          <Card className="mb-6 border-destructive/30 bg-destructive/5">
-            <CardContent className="flex items-start gap-3 pt-4">
-              <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-              <div>
-                <p className="text-sm font-medium text-destructive">查询失败</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">{error}</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Results Card ───────────────────────────────────────────── */}
-        {queried && !error && (
-          <Card>
-            <CardHeader>
+      {/* ── Results ───────────────────────────────────────────────── */}
+      {queried && !error && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <div>
               <CardTitle className="flex items-center gap-2">
-                <FileText className="size-4 text-muted-foreground" />
+                <ShoppingCart className="size-4 text-muted-foreground" />
                 查询结果
               </CardTitle>
               <CardDescription>
                 共{" "}
-                <span className="font-semibold text-foreground">
+                <span className="font-semibold text-foreground tabular-nums">
                   {totalCount}
                 </span>{" "}
                 条记录 · 第{" "}
-                <span className="font-semibold text-foreground">
+                <span className="font-semibold text-foreground tabular-nums">
                   {pageIndex}
                 </span>{" "}
                 / {totalPages} 页
               </CardDescription>
-            </CardHeader>
+            </div>
+          </CardHeader>
 
-            {orders.length > 0 ? (
-              <>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="pl-4">线上单号</TableHead>
-                        <TableHead>内部单号</TableHead>
-                        <TableHead>店铺 ID</TableHead>
-                        <TableHead>状态</TableHead>
-                        <TableHead className="text-right">应付金额</TableHead>
-                        <TableHead className="pr-4">商品明细</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {orders.map((order, idx) => (
-                        <TableRow key={order.o_id ?? idx}>
-                          <TableCell className="pl-4 font-mono text-xs">
+          {orders.length > 0 ? (
+            <>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-4">线上单号</TableHead>
+                      <TableHead>内部单号</TableHead>
+                      <TableHead>店铺 ID</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead className="text-right">应付金额</TableHead>
+                      <TableHead className="pr-4">商品明细</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orders.map((order, idx) => {
+                      const st = getStatusConfig(order.status);
+                      return (
+                        <TableRow key={order.o_id ?? idx} className="group cursor-pointer hover:bg-secondary/50 transition-colors">
+                          <TableCell className="pl-4 font-mono text-xs font-medium">
                             {order.so_id}
                           </TableCell>
                           <TableCell className="font-mono text-xs text-muted-foreground">
                             {order.o_id}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
+                          <TableCell className="text-muted-foreground text-sm">
                             {order.shop_id}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={getStatusVariant(order.status)}>
-                              {getStatusLabel(order.status)}
-                            </Badge>
+                            <div className="flex items-center gap-1.5">
+                              <div className={`size-1.5 rounded-full ${st.dotColor}`} />
+                              <Badge variant={st.variant} className="text-[10px]">
+                                {st.label}
+                              </Badge>
+                            </div>
                           </TableCell>
-                          <TableCell className="text-right font-mono font-semibold tabular-nums">
-                            ¥{order.pay_amount?.toFixed(2) ?? "—"}
+                          <TableCell className="text-right">
+                            <span className="font-mono font-semibold tabular-nums">
+                              ¥{order.pay_amount?.toFixed(2) ?? "—"}
+                            </span>
                           </TableCell>
                           <TableCell className="max-w-[220px] pr-4">
                             {order.items?.length > 0 ? (
@@ -333,7 +360,7 @@ export default function OrdersPage() {
                                     <span className="truncate max-w-[160px]">
                                       {item.name}
                                     </span>
-                                    <span className="shrink-0 text-muted-foreground/60">
+                                    <span className="shrink-0 text-muted-foreground/60 tabular-nums">
                                       ×{item.qty}
                                     </span>
                                   </div>
@@ -351,74 +378,78 @@ export default function OrdersPage() {
                             )}
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-
-                <CardFooter className="justify-between">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(pageIndex - 1)}
-                    disabled={pageIndex <= 1 || loading}
-                    className="gap-1.5"
-                  >
-                    <ChevronLeft className="size-3.5" />
-                    上一页
-                  </Button>
-
-                  <span className="text-xs text-muted-foreground">
-                    第 {pageIndex} / {totalPages} 页 · 每页 {pageSize} 条
-                  </span>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(pageIndex + 1)}
-                    disabled={!hasNext || loading}
-                    className="gap-1.5"
-                  >
-                    下一页
-                    <ChevronRight className="size-3.5" />
-                  </Button>
-                </CardFooter>
-              </>
-            ) : (
-              <CardContent>
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Inbox className="mb-3 size-10 text-muted-foreground/30" />
-                  <p className="text-sm font-medium text-muted-foreground">
-                    暂无订单数据
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground/60">
-                    请调整查询条件后重试
-                  </p>
-                </div>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </CardContent>
-            )}
-          </Card>
-        )}
 
-        {/* ── Initial Guide ──────────────────────────────────────────── */}
-        {!queried && !error && (
-          <Card className="border-dashed">
+              <CardFooter className="justify-between">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(pageIndex - 1)}
+                  disabled={pageIndex <= 1 || loading}
+                  className="gap-1.5"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  上一页
+                </Button>
+
+                <span className="text-xs text-muted-foreground">
+                  第 {pageIndex} / {totalPages} 页 · 每页 {pageSize} 条
+                </span>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(pageIndex + 1)}
+                  disabled={!hasNext || loading}
+                  className="gap-1.5"
+                >
+                  下一页
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </CardFooter>
+            </>
+          ) : (
             <CardContent>
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Package className="size-7" />
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary">
+                  <Inbox className="size-6 text-muted-foreground/30" />
                 </div>
-                <p className="text-sm font-medium">
-                  选择查询条件并点击「查询订单」
+                <p className="text-sm font-medium text-muted-foreground">
+                  暂无订单数据
                 </p>
-                <p className="mt-2 max-w-sm text-center text-xs text-muted-foreground leading-relaxed">
-                  通过聚水潭开放平台 API 查询订单数据。
-                  支持按时间范围、订单状态、线上单号等条件筛选。
+                <p className="mt-1 text-xs text-muted-foreground/60">
+                  请调整查询条件后重试
                 </p>
               </div>
             </CardContent>
-          </Card>
-        )}
+          )}
+        </Card>
+      )}
+
+      {/* ── Initial Guide ──────────────────────────────────────────── */}
+      {!queried && !error && (
+        <Card className="border-dashed relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/3 to-transparent" />
+          <CardContent className="relative">
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary">
+                <Package className="size-7" />
+              </div>
+              <p className="text-sm font-medium">
+                选择查询条件并点击「查询订单」
+              </p>
+              <p className="mt-2 max-w-sm text-center text-xs text-muted-foreground leading-relaxed">
+                通过聚水潭开放平台 API 查询订单数据。
+                支持按时间范围、订单状态、线上单号等条件筛选。
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

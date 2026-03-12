@@ -10,6 +10,8 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Activity,
+  Filter,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -48,12 +50,40 @@ const STATUS_CONFIG: Record<
     label: string;
     variant: "default" | "secondary" | "destructive" | "outline";
     icon: typeof Clock;
+    dotColor: string;
+    gradient: string;
+    iconBg: string;
+    iconColor: string;
   }
 > = {
-  pending: { label: "待拣货", variant: "outline", icon: Clock },
-  picking: { label: "拣货中", variant: "secondary", icon: PackageOpen },
-  completed: { label: "已出库", variant: "default", icon: CheckCircle2 },
-  cancelled: { label: "已取消", variant: "destructive", icon: XCircle },
+  pending: {
+    label: "待拣货", variant: "outline", icon: Clock,
+    dotColor: "bg-amber-500",
+    gradient: "from-amber-500/10 to-transparent",
+    iconBg: "bg-amber-500/10",
+    iconColor: "text-amber-600 dark:text-amber-400",
+  },
+  picking: {
+    label: "拣货中", variant: "secondary", icon: PackageOpen,
+    dotColor: "bg-blue-500",
+    gradient: "from-blue-500/10 to-transparent",
+    iconBg: "bg-blue-500/10",
+    iconColor: "text-blue-600 dark:text-blue-400",
+  },
+  completed: {
+    label: "已出库", variant: "default", icon: CheckCircle2,
+    dotColor: "bg-emerald-500",
+    gradient: "from-emerald-500/10 to-transparent",
+    iconBg: "bg-emerald-500/10",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+  },
+  cancelled: {
+    label: "已取消", variant: "destructive", icon: XCircle,
+    dotColor: "bg-red-500",
+    gradient: "from-rose-500/10 to-transparent",
+    iconBg: "bg-rose-500/10",
+    iconColor: "text-rose-600 dark:text-rose-400",
+  },
 };
 
 const STATUS_OPTIONS = [
@@ -97,23 +127,36 @@ export default function OutboundPage() {
   }, []);
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
-      {/* ── 概览卡片 ─────────────────────────────────────────────── */}
+    <div className="p-4 sm:p-6 space-y-8">
+      {/* ── 页面标题 ─────────────────────────────────────────────── */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">出库任务</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          管理所有出库任务 · 共 {OUTBOUND_TASKS.length} 条记录
+        </p>
+      </div>
+
+      {/* ── 状态概览卡片 ─────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {(Object.entries(STATUS_CONFIG) as [OutboundStatus, typeof STATUS_CONFIG[OutboundStatus]][]).map(
           ([key, config]) => (
             <Card
               key={key}
               size="sm"
-              className={statusFilter === key ? "ring-2 ring-primary" : "cursor-pointer hover:ring-1 hover:ring-primary/50 transition-all"}
+              className={`relative overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${
+                statusFilter === key
+                  ? "ring-2 ring-primary shadow-lg"
+                  : "hover:ring-1 hover:ring-primary/30"
+              }`}
               onClick={() => {
                 setStatusFilter(statusFilter === key ? "" : key);
                 setPage(1);
               }}
             >
-              <CardContent className="flex items-center gap-3 pt-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-                  <config.icon className="size-5 text-muted-foreground" />
+              <div className={`absolute inset-0 bg-gradient-to-br ${config.gradient}`} />
+              <CardContent className="relative flex items-center gap-3 pt-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${config.iconBg}`}>
+                  <config.icon className={`size-5 ${config.iconColor}`} />
                 </div>
                 <div>
                   <p className="text-2xl font-bold tabular-nums">
@@ -129,16 +172,22 @@ export default function OutboundPage() {
         )}
       </div>
 
-      {/* ── 筛选区 ───────────────────────────────────────────────── */}
+      {/* ── 任务列表 ─────────────────────────────────────────────── */}
       <Card>
-        <CardHeader>
-          <CardTitle>出库任务列表</CardTitle>
-          <CardDescription>
-            管理所有出库任务 · 共 {filteredTasks.length} 条记录
-          </CardDescription>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="size-4 text-muted-foreground" />
+              出库任务列表
+            </CardTitle>
+            <CardDescription>
+              {statusFilter ? STATUS_CONFIG[statusFilter as OutboundStatus]?.label + "任务" : "全部任务"} · {filteredTasks.length} 条
+            </CardDescription>
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {/* ── 搜索筛选区 ─────────────────────────────────────── */}
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -177,22 +226,22 @@ export default function OutboundPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>任务编号</TableHead>
+                <TableHead className="pl-4">任务编号</TableHead>
                 <TableHead>关联订单</TableHead>
                 <TableHead>种子明细</TableHead>
                 <TableHead>数量</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>操作员</TableHead>
                 <TableHead className="text-right">创建时间</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead className="text-right pr-4">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paged.map((task) => {
                 const st = STATUS_CONFIG[task.status];
                 return (
-                  <TableRow key={task.taskNo}>
-                    <TableCell className="font-mono text-xs font-medium">
+                  <TableRow key={task.taskNo} className="group cursor-pointer hover:bg-secondary/50 transition-colors">
+                    <TableCell className="pl-4 font-mono text-xs font-medium">
                       {task.taskNo}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
@@ -215,11 +264,14 @@ export default function OutboundPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono tabular-nums">
+                    <TableCell className="font-mono tabular-nums font-medium">
                       {task.items.reduce((s, i) => s + i.quantity, 0)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={st.variant}>{st.label}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`size-1.5 rounded-full ${st.dotColor}`} />
+                        <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {task.operator ?? "—"}
@@ -227,15 +279,15 @@ export default function OutboundPage() {
                     <TableCell className="text-right text-xs text-muted-foreground">
                       {task.createdAt.slice(0, 16)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right pr-4">
                       {task.status === "pending" && (
-                        <Button size="xs" variant="outline" className="gap-1">
+                        <Button size="xs" variant="outline" className="gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                           开始拣货
                           <ArrowRight className="size-3" />
                         </Button>
                       )}
                       {task.status === "picking" && (
-                        <Button size="xs" className="gap-1">
+                        <Button size="xs" className="gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                           确认出库
                           <ArrowRight className="size-3" />
                         </Button>
