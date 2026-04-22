@@ -3,338 +3,300 @@
 import { useState, useMemo } from "react";
 import {
   Search,
-  ChevronLeft,
-  ChevronRight,
-  ArrowRight,
+  ClipboardList,
   PackageOpen,
+  Truck,
+  ArrowRight,
+  User,
   Clock,
-  CheckCircle2,
-  XCircle,
-  Activity,
-  Filter,
+  Loader2,
+  Package,
+  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 
 import type { OutboundStatus } from "@/lib/types";
-import { OUTBOUND_TASKS, SEED_SPECS } from "@/lib/mock-data";
+import { OUTBOUND_TASKS } from "@/lib/mock-data";
 
-const STATUS_CONFIG: Record<
-  OutboundStatus,
-  {
-    label: string;
-    variant: "default" | "secondary" | "destructive" | "outline";
-    icon: typeof Clock;
-    dotColor: string;
-    gradient: string;
-    iconBg: string;
-    iconColor: string;
-  }
-> = {
-  pending: {
-    label: "待拣货", variant: "outline", icon: Clock,
-    dotColor: "bg-amber-500",
-    gradient: "from-amber-500/10 to-transparent",
-    iconBg: "bg-amber-500/10",
-    iconColor: "text-amber-600 dark:text-amber-400",
-  },
-  picking: {
-    label: "拣货中", variant: "secondary", icon: PackageOpen,
-    dotColor: "bg-blue-500",
-    gradient: "from-blue-500/10 to-transparent",
-    iconBg: "bg-blue-500/10",
-    iconColor: "text-blue-600 dark:text-blue-400",
-  },
-  completed: {
-    label: "已出库", variant: "default", icon: CheckCircle2,
-    dotColor: "bg-emerald-500",
-    gradient: "from-emerald-500/10 to-transparent",
-    iconBg: "bg-emerald-500/10",
-    iconColor: "text-emerald-600 dark:text-emerald-400",
-  },
-  cancelled: {
-    label: "已取消", variant: "destructive", icon: XCircle,
-    dotColor: "bg-red-500",
-    gradient: "from-rose-500/10 to-transparent",
-    iconBg: "bg-rose-500/10",
-    iconColor: "text-rose-600 dark:text-rose-400",
-  },
+// ─── 阶段配置 ────────────────────────────────────────────────────────────────
+
+const STAGE_COLORS = {
+  amber: "#f59e0b",
+  blue: "#3b82f6",
+  emerald: "#10b981",
 };
 
-const STATUS_OPTIONS = [
-  { value: "", label: "全部状态" },
-  { value: "pending", label: "待拣货" },
-  { value: "picking", label: "拣货中" },
-  { value: "completed", label: "已出库" },
-  { value: "cancelled", label: "已取消" },
-] as const;
+// ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 export default function OutboundPage() {
-  const [statusFilter, setStatusFilter] = useState("");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [searchPending, setSearchPending] = useState("");
+  const [searchCompleted, setSearchCompleted] = useState("");
 
-  const filteredTasks = useMemo(() => {
-    return OUTBOUND_TASKS.filter((t) => {
-      if (statusFilter && t.status !== statusFilter) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          t.taskNo.toLowerCase().includes(q) ||
-          t.orderNo.toLowerCase().includes(q) ||
-          t.items.some((i) => i.productName.toLowerCase().includes(q))
-        );
-      }
-      return true;
-    });
-  }, [statusFilter, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
-  const paged = filteredTasks.slice((page - 1) * pageSize, page * pageSize);
-
-  // Summary counts
   const counts = useMemo(() => {
-    const c = { pending: 0, picking: 0, completed: 0, cancelled: 0 };
-    for (const t of OUTBOUND_TASKS)
-      c[t.status as keyof typeof c]++;
+    const c = { pending: 0, picking: 0, completed: 0 };
+    for (const t of OUTBOUND_TASKS) {
+      if (t.status !== "cancelled") c[t.status as keyof typeof c]++;
+    }
     return c;
   }, []);
 
+  const total = counts.pending + counts.picking + counts.completed;
+
+  const pickingTask = useMemo(
+    () => OUTBOUND_TASKS.find((t) => t.status === "picking"),
+    [],
+  );
+
+  const pendingTasks = useMemo(() => {
+    return OUTBOUND_TASKS.filter((t) => {
+      if (t.status !== "pending") return false;
+      if (searchPending) {
+        const q = searchPending.toLowerCase();
+        return t.taskNo.toLowerCase().includes(q) || t.orderNo.toLowerCase().includes(q) ||
+          t.items.some((i) => i.productName.toLowerCase().includes(q));
+      }
+      return true;
+    });
+  }, [searchPending]);
+
+  const completedTasks = useMemo(() => {
+    return OUTBOUND_TASKS.filter((t) => {
+      if (t.status !== "completed") return false;
+      if (searchCompleted) {
+        const q = searchCompleted.toLowerCase();
+        return t.taskNo.toLowerCase().includes(q) || t.orderNo.toLowerCase().includes(q) ||
+          t.items.some((i) => i.productName.toLowerCase().includes(q));
+      }
+      return true;
+    });
+  }, [searchCompleted]);
+
   return (
-    <div className="p-4 sm:p-6 space-y-8">
-      {/* ── 页面标题 ─────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">出库任务</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          管理所有出库任务 · 共 {OUTBOUND_TASKS.length} 条记录
-        </p>
+    <div className="p-4 sm:p-6 h-[calc(100vh-3.5rem)] flex flex-col gap-5 overflow-hidden">
+      {/* ── 页面标题 + 进度条 ──────────────────────────────── */}
+      <div className="space-y-2 flex-shrink-0">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">出库任务</h1>
+          <span className="text-sm text-muted-foreground">共 {total} 条任务</span>
+        </div>
+        <div className="relative h-2 rounded-full bg-secondary overflow-hidden flex">
+          <div className="h-full bg-amber-500 transition-all duration-700 first:rounded-l-full" style={{ width: `${total > 0 ? (counts.pending / total) * 100 : 0}%`, opacity: 0.6 }} />
+          <div className="h-full bg-blue-500 transition-all duration-700" style={{ width: `${total > 0 ? (counts.picking / total) * 100 : 0}%`, opacity: 0.6 }} />
+          <div className="h-full bg-emerald-500 transition-all duration-700 last:rounded-r-full" style={{ width: `${total > 0 ? (counts.completed / total) * 100 : 0}%`, opacity: 0.6 }} />
+        </div>
       </div>
 
-      {/* ── 状态概览卡片 ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {(Object.entries(STATUS_CONFIG) as [OutboundStatus, typeof STATUS_CONFIG[OutboundStatus]][]).map(
-          ([key, config]) => (
-            <Card
-              key={key}
-              size="sm"
-              className={`relative overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${
-                statusFilter === key
-                  ? "ring-2 ring-primary shadow-lg"
-                  : "hover:ring-1 hover:ring-primary/30"
-              }`}
-              onClick={() => {
-                setStatusFilter(statusFilter === key ? "" : key);
-                setPage(1);
-              }}
-            >
-              <div className={`absolute inset-0 bg-gradient-to-br ${config.gradient}`} />
-              <CardContent className="relative flex items-center gap-3 pt-3">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${config.iconBg}`}>
-                  <config.icon className={`size-5 ${config.iconColor}`} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {counts[key]}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {config.label}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        )}
-      </div>
+      {/* ── 三栏布局 ──────────────────────────────────────── */}
+      <div className="flex gap-4 flex-1 min-h-0">
 
-      {/* ── 任务列表 ─────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="size-4 text-muted-foreground" />
-              出库任务列表
-            </CardTitle>
-            <CardDescription>
-              {statusFilter ? STATUS_CONFIG[statusFilter as OutboundStatus]?.label + "任务" : "全部任务"} · {filteredTasks.length} 条
-            </CardDescription>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {/* ── 搜索筛选区 ─────────────────────────────────────── */}
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="搜索任务号、订单号或品种名…"
-                className="pl-8"
-              />
+        {/* ═══ 左栏 · 待拣货队列 ═══ */}
+        <div className="w-[280px] flex-shrink-0 flex flex-col min-h-0">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
+              <ClipboardList className="size-4 text-amber-600 dark:text-amber-400" />
             </div>
-            <Select
-              value={statusFilter || null}
-              onValueChange={(v) => {
-                setStatusFilter(v === "全部" ? "" : (v ?? ""));
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-[140px]">
-                <SelectValue placeholder="全部状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="全部">全部状态</SelectItem>
-                {STATUS_OPTIONS.filter(opt => opt.value !== "").map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div>
+              <p className="text-sm font-semibold leading-none">待拣货</p>
+              <p className="text-[11px] text-muted-foreground">{counts.pending} 条等待处理</p>
+            </div>
+          </div>
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+            <Input value={searchPending} onChange={(e) => setSearchPending(e.target.value)} placeholder="搜索…" className="h-8 pl-8 text-xs" />
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+            {pendingTasks.map((task, i) => (
+              <div
+                key={task.taskNo}
+                className="flow-card-enter rounded-xl border bg-card p-3 space-y-1.5 hover:shadow-sm hover:border-amber-500/30 transition-all cursor-pointer group"
+                style={{ animationDelay: `${i * 30}ms` }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-[11px] font-semibold">{task.taskNo}</span>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">{task.orderNo}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {task.items.slice(0, 2).map((item, j) => (
+                    <span key={j} className="text-[10px] text-muted-foreground bg-secondary/60 rounded px-1.5 py-0.5">
+                      {item.productName} <span className="font-mono font-medium text-foreground">×{item.quantity}</span>
+                    </span>
+                  ))}
+                  {task.items.length > 2 && <span className="text-[10px] text-muted-foreground/50">+{task.items.length - 2}</span>}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground">{task.operator} · {task.createdAt.slice(5, 16)}</span>
+                  <ChevronRight className="size-3 text-muted-foreground/30 group-hover:text-amber-500 transition-colors" />
+                </div>
+              </div>
+            ))}
+            {pendingTasks.length === 0 && (
+              <div className="text-center py-6 text-xs text-muted-foreground/50">暂无任务</div>
+            )}
+          </div>
+        </div>
+
+        {/* ═══ 中栏 · 拣货出库 (焦点) ═══ */}
+        <div className="flex-1 flex flex-col items-center justify-center min-w-0">
+          {/* Flow arrows label */}
+          <div className="flex items-center gap-4 mb-6 w-full max-w-lg">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-amber-500/50" />
+            <span className="text-[10px] text-muted-foreground/60 font-medium tracking-wider uppercase">开始拣货</span>
+            <svg viewBox="0 0 16 12" className="w-4 h-3 text-amber-500/50"><polygon points="0,0 16,6 0,12" fill="currentColor" /></svg>
           </div>
 
-          {/* ── 任务表格 ───────────────────────────────────────── */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-4">任务编号</TableHead>
-                <TableHead>关联订单</TableHead>
-                <TableHead>种子明细</TableHead>
-                <TableHead>数量</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>操作员</TableHead>
-                <TableHead className="text-right">创建时间</TableHead>
-                <TableHead className="text-right pr-4">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paged.map((task) => {
-                const st = STATUS_CONFIG[task.status];
-                return (
-                  <TableRow key={task.taskNo} className="group cursor-pointer hover:bg-secondary/50 transition-colors">
-                    <TableCell className="pl-4 font-mono text-xs font-medium">
-                      {task.taskNo}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {task.orderNo}
-                    </TableCell>
-                    <TableCell className="max-w-[200px]">
-                      <div className="space-y-0.5">
-                        {task.items.slice(0, 2).map((item, i) => (
-                          <div
-                            key={i}
-                            className="truncate text-xs text-muted-foreground"
-                          >
-                            {item.productName}
-                          </div>
-                        ))}
-                        {task.items.length > 2 && (
-                          <span className="text-xs text-muted-foreground/50">
-                            +{task.items.length - 2} 更多
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono tabular-nums font-medium">
-                      {task.items.reduce((s, i) => s + i.quantity, 0)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <div className={`size-1.5 rounded-full ${st.dotColor}`} />
-                        <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {task.operator ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {task.createdAt.slice(0, 16)}
-                    </TableCell>
-                    <TableCell className="text-right pr-4">
-                      {task.status === "pending" && (
-                        <Button size="xs" variant="outline" className="gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                          开始拣货
-                          <ArrowRight className="size-3" />
-                        </Button>
-                      )}
-                      {task.status === "picking" && (
-                        <Button size="xs" className="gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                          确认出库
-                          <ArrowRight className="size-3" />
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {paged.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      暂无匹配的出库任务
-                    </p>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
+          {/* ── 主焦点卡片 ── */}
+          <div className="w-full max-w-lg">
+            <div
+              className="relative rounded-3xl border-2 border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent p-8 shadow-xl shadow-blue-500/5 flow-node-glow"
+              style={{ "--glow-color": "rgba(59,130,246,0.15)" } as React.CSSProperties}
+            >
+              {/* Ambient glow */}
+              <div
+                className="absolute -inset-px rounded-3xl pointer-events-none"
+                style={{
+                  background: "radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.12) 0%, transparent 60%)",
+                }}
+              />
+              <div
+                className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-16 rounded-full pointer-events-none blur-2xl"
+                style={{ background: "rgba(59,130,246,0.15)", animation: "pulseRing 3s ease-in-out infinite" }}
+              />
 
-        <CardFooter className="justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="gap-1.5"
-          >
-            <ChevronLeft className="size-3.5" />
-            上一页
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            第 {page} / {totalPages} 页
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="gap-1.5"
-          >
-            下一页
-            <ChevronRight className="size-3.5" />
-          </Button>
-        </CardFooter>
-      </Card>
+              <div className="relative space-y-5">
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/15 ring-1 ring-blue-500/20">
+                    <PackageOpen className="size-7 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2.5">
+                      <h2 className="text-xl font-bold">拣货出库</h2>
+                      <Loader2 className="size-4.5 text-blue-500 animate-spin" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">当前正在处理的出库任务</p>
+                  </div>
+                </div>
+
+                {pickingTask ? (
+                  <>
+                    {/* Divider */}
+                    <div className="h-px bg-border/50" />
+
+                    {/* Task info */}
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-base font-bold">{pickingTask.taskNo}</span>
+                      <Badge variant="outline" className="text-sm px-2.5 py-0.5">{pickingTask.orderNo}</Badge>
+                    </div>
+
+                    {/* Items — prominent table-like display */}
+                    <div className="rounded-xl border bg-background/80 backdrop-blur-sm overflow-hidden">
+                      <div className="px-4 py-2 border-b bg-secondary/30">
+                        <span className="text-xs font-medium text-muted-foreground">拣货清单</span>
+                      </div>
+                      {pickingTask.items.map((item, i) => (
+                        <div
+                          key={i}
+                          className={`flex items-center justify-between px-4 py-3 ${i < pickingTask.items.length - 1 ? "border-b border-border/50" : ""}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Package className="size-4 text-blue-500/50" />
+                            <span className="text-sm">{item.productName}</span>
+                          </div>
+                          <span className="font-mono text-lg font-bold tabular-nums text-blue-600 dark:text-blue-400">
+                            ×{item.quantity}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Meta */}
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      {pickingTask.operator && (
+                        <span className="flex items-center gap-1.5">
+                          <User className="size-3.5" />
+                          {pickingTask.operator}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="size-3.5" />
+                        {pickingTask.createdAt.slice(0, 16)}
+                      </span>
+                    </div>
+
+                    {/* CTA — large and prominent */}
+                    <Button size="lg" className="w-full gap-2.5 h-12 text-base font-semibold shadow-md shadow-primary/20">
+                      确认出库 <ArrowRight className="size-5" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-px bg-border/50" />
+                    <div className="text-center py-10 space-y-2">
+                      <PackageOpen className="size-10 text-muted-foreground/20 mx-auto" />
+                      <p className="text-sm text-muted-foreground/60">暂无正在拣货的任务</p>
+                      <p className="text-xs text-muted-foreground/40">从左侧选择一条待拣货任务开始</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Flow arrows label - outgoing */}
+          <div className="flex items-center gap-4 mt-6 w-full max-w-lg">
+            <svg viewBox="0 0 16 12" className="w-4 h-3 text-emerald-500/50 rotate-180"><polygon points="0,0 16,6 0,12" fill="currentColor" /></svg>
+            <span className="text-[10px] text-muted-foreground/60 font-medium tracking-wider uppercase">出库完成</span>
+            <div className="flex-1 h-px bg-gradient-to-r from-emerald-500/50 via-emerald-500/30 to-transparent" />
+          </div>
+        </div>
+
+        {/* ═══ 右栏 · 已出库记录 ═══ */}
+        <div className="w-[280px] flex-shrink-0 flex flex-col min-h-0">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15">
+              <Truck className="size-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold leading-none">已出库</p>
+              <p className="text-[11px] text-muted-foreground">{counts.completed} 条已完成</p>
+            </div>
+          </div>
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+            <Input value={searchCompleted} onChange={(e) => setSearchCompleted(e.target.value)} placeholder="搜索…" className="h-8 pl-8 text-xs" />
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+            {completedTasks.map((task, i) => (
+              <div
+                key={task.taskNo}
+                className="flow-card-enter rounded-xl border bg-card p-3 space-y-1.5 hover:shadow-sm hover:border-emerald-500/30 transition-all"
+                style={{ animationDelay: `${i * 30}ms` }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-[11px] font-semibold">{task.taskNo}</span>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">{task.orderNo}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {task.items.slice(0, 2).map((item, j) => (
+                    <span key={j} className="text-[10px] text-muted-foreground bg-secondary/60 rounded px-1.5 py-0.5">
+                      {item.productName} <span className="font-mono font-medium text-foreground">×{item.quantity}</span>
+                    </span>
+                  ))}
+                  {task.items.length > 2 && <span className="text-[10px] text-muted-foreground/50">+{task.items.length - 2}</span>}
+                </div>
+                <span className="text-[10px] text-muted-foreground block">{task.operator} · {task.createdAt.slice(5, 16)}</span>
+              </div>
+            ))}
+            {completedTasks.length === 0 && (
+              <div className="text-center py-6 text-xs text-muted-foreground/50">暂无任务</div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -127,3 +127,124 @@
     @apply font-sans;
   }
 }
+
+/* ── 出库流程图动画 ─────────────────────────────────────── */
+
+@keyframes flowDash {
+  to { stroke-dashoffset: -24; }
+}
+
+@keyframes flowParticle {
+  0%   { offset-distance: 0%; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+@keyframes nodeGlow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--glow-color, rgba(59,130,246,0.0)); }
+  50%      { box-shadow: 0 0 20px 4px var(--glow-color, rgba(59,130,246,0.15)); }
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulseRing {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50%      { transform: scale(1.15); opacity: 0.2; }
+}
+
+.flow-connector-line {
+  stroke-dasharray: 8 8;
+  animation: flowDash 1s linear infinite;
+}
+
+.flow-node-glow {
+  animation: nodeGlow 3s ease-in-out infinite;
+}
+
+.flow-panel-enter {
+  animation: slideInUp 0.35s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+.flow-card-enter {
+  animation: fadeInScale 0.3s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* ── 数字孪生动画 ───────────────────────────────────────── */
+
+@keyframes twinDash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@keyframes twinSlotPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes twinDropPulse {
+  0% {
+    opacity: 0.2;
+    transform: translateY(0) scale(0.7);
+  }
+  70% {
+    opacity: 0.95;
+    transform: translateY(10px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.9);
+  }
+}
+
+@keyframes twinVacuumHalo {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(0.88);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.12);
+  }
+}
+
+.twin-dash-line {
+  animation: twinDash 1.4s linear infinite;
+}
+
+.twin-slot-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: twinSlotPulse 1.8s ease-in-out infinite;
+}
+
+.twin-drop-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: twinDropPulse 0.6s ease-in-out infinite;
+}
+
+.twin-drop-pulse-delay {
+  animation-delay: 0.12s;
+}
+
+.twin-vacuum-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: twinVacuumHalo 0.9s ease-in-out infinite;
+}

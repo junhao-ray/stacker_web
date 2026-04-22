@@ -1,0 +1,58 @@
+{
+  "endpointUrl": "opc.tcp://127.0.0.1:4840",
+  "securityMode": "None",
+  "securityPolicy": "None",
+  "requestedSessionTimeoutMs": 20000,
+  "ackTimeoutMs": 3000,
+  "reconnectIntervalMs": 2000,
+  "pulseDurationMs": 120,
+  "pollIntervalMs": 1000,
+  "sideMapping": {
+    "left": 1,
+    "right": 2
+  },
+  "commandCodes": {
+    "dispatchTask": 10,
+    "start": 20,
+    "pause": 30,
+    "resume": 40,
+    "reset": 50
+  },
+  "nodes": {
+    "command": {
+      "code": "",
+      "seq": "",
+      "trigger": ""
+    },
+    "ack": {
+      "lastAckSeq": "",
+      "lastAckCode": "",
+      "lastAckResult": ""
+    },
+    "machine": {
+      "state": "",
+      "currentTaskNo": "",
+      "alarm": "",
+      "errorCode": "",
+      "errorMessage": ""
+    },
+    "task": {
+      "header": {
+        "taskNo": "",
+        "orderNo": "",
+        "stepCount": ""
+      },
+      "steps": [
+        {
+          "index": "",
+          "productCode": "",
+          "quantity": "",
+          "side": "",
+          "column": "",
+          "level": "",
+          "slotId": ""
+        }
+      ]
+    }
+  }
+}

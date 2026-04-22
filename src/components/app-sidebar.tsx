@@ -8,6 +8,8 @@ import {
   Package,
   Ruler,
   ShoppingCart,
+  SlidersHorizontal,
+  Radar,
   Warehouse,
 } from "lucide-react";
 
@@ -37,6 +39,16 @@ const NAV_ITEMS = [
     href: "/outbound",
     icon: PackageOpen,
     badge: 8,
+  },
+  {
+    title: "数字孪生",
+    href: "/digital-twin",
+    icon: Radar,
+  },
+  {
+    title: "PLC配置",
+    href: "/plc-config",
+    icon: SlidersHorizontal,
   },
   {
     title: "库存管理",

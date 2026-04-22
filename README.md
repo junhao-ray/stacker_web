@@ -1,5 +1,30 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## PLC / OPC UA Gateway
+
+This repo now includes an internal OPC UA gateway service for PLC task-level control:
+
+1. Copy `services/opc-gateway/config/plc-config.template.json` to `services/opc-gateway/config/plc-config.json`
+2. Fill the real PLC `NodeId` mappings and command codes
+3. Set shared env vars:
+
+```bash
+export PLC_GATEWAY_SHARED_KEY=replace-me
+export PLC_GATEWAY_BASE_URL=http://127.0.0.1:4010
+```
+
+4. Start the gateway:
+
+```bash
+npm run plc:gateway
+```
+
+If you want to test the browser/API flow before现场 OPC联调, you can run the fake transport:
+
+```bash
+PLC_GATEWAY_TRANSPORT=fake npm run plc:gateway
+```
+
 ## Getting Started
 
 First, run the development server:
