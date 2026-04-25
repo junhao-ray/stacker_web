@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import {
   Package,
   PackageOpen,
@@ -10,7 +9,6 @@ import {
   Ruler,
   ArrowRight,
   Clock,
-  CheckCircle2,
   Activity,
 } from "lucide-react";
 
@@ -54,21 +52,22 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondar
   cancelled: { label: "已取消", variant: "destructive", dotColor: "bg-red-500" },
 };
 
+const CATEGORY_DIST = Array.from(
+  SEED_PRODUCTS.reduce((map, product) => {
+    map.set(product.category, (map.get(product.category) ?? 0) + 1);
+    return map;
+  }, new Map<string, number>()),
+)
+  .sort((left, right) => right[1] - left[1])
+  .map(([name, count]) => ({ name, count }));
+
+const TOTAL_VARIETIES = CATEGORY_DIST.reduce((sum, category) => sum + category.count, 0);
+
 export default function DashboardPage() {
   const stats = WAREHOUSE_STATS;
   const recentTasks = OUTBOUND_TASKS.slice(0, 8);
   const specDist = getSpecDistribution();
   const maxStock = Math.max(...specDist.map((s) => s.stock), 1);
-
-  // 类型分布
-  const categoryDist = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const p of SEED_PRODUCTS) map.set(p.category, (map.get(p.category) ?? 0) + 1);
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
-  }, []);
-  const totalVarieties = categoryDist.reduce((s, c) => s + c.count, 0);
 
   const statCards = [
     {
@@ -247,12 +246,12 @@ export default function DashboardPage() {
                 品种类型
               </CardTitle>
               <CardDescription className="text-xs">
-                {categoryDist.length} 个类型 · {totalVarieties} 个品种
+                {CATEGORY_DIST.length} 个类型 · {TOTAL_VARIETIES} 个品种
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {categoryDist.map((cat, idx) => {
-                const pct = totalVarieties > 0 ? (cat.count / totalVarieties) * 100 : 0;
+              {CATEGORY_DIST.map((cat, idx) => {
+                const pct = TOTAL_VARIETIES > 0 ? (cat.count / TOTAL_VARIETIES) * 100 : 0;
                 const barColor = SPEC_COLORS[idx % SPEC_COLORS.length];
                 return (
                   <div key={cat.name} className="flex items-center gap-3 group/cat rounded-md px-1.5 py-1 -mx-1.5 transition-colors hover:bg-secondary/50">

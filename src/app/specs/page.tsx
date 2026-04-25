@@ -28,7 +28,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 
 import { SEED_SPECS, getSpecDistribution } from "@/lib/mock-data";
 
@@ -51,7 +50,6 @@ function getColor(idx: number) {
 export default function SpecsPage() {
   const dist = getSpecDistribution();
   const maxStock = Math.max(...dist.map((d) => d.stock));
-  const maxArea = Math.max(...SEED_SPECS.map((s) => s.width * s.length));
   const totalStock = dist.reduce((s, d) => s + d.stock, 0);
   const totalVarieties = dist.reduce((s, d) => s + d.count, 0);
   const [selectedSpec, setSelectedSpec] = useState<number | null>(null);

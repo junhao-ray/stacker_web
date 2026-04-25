@@ -97,7 +97,6 @@ export default function InventoryPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const normalCount = SEED_PRODUCTS.filter((p) => p.status === "normal").length;
   const lowCount = SEED_PRODUCTS.filter((p) => p.status === "low").length;
   const emptyCount = SEED_PRODUCTS.filter((p) => p.status === "empty").length;
   const totalStock = SEED_PRODUCTS.reduce((s, p) => s + p.stock, 0);

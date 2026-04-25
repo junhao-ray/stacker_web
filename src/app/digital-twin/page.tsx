@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
-  ArrowRightLeft,
   Bot,
   Boxes,
   Cable,
@@ -48,14 +47,12 @@ import type {
 const TIMELINE = [
   { phase: "moving" as const, duration: 900 },
   { phase: "rotating" as const, duration: 450 },
-  { phase: "extending" as const, duration: 350 },
   { phase: "suction" as const, duration: 250 },
-  { phase: "retracting" as const, duration: 300 },
   { phase: "dropping" as const, duration: 250 },
 ];
 
 const STEP_INTERVAL = 300;
-const STAGE_VIEWBOX = { width: 1760, height: 680 };
+const STAGE_VIEWBOX = { width: 1760, height: 720 };
 
 type PlaybackSpeed = 1 | 2;
 type SimulationStatus = "idle" | "running" | "paused" | "completed" | "alarm";
@@ -78,9 +75,9 @@ function phaseLabel(phase: TwinMachinePhase) {
     idle: "待命",
     moving: "移动中",
     rotating: "旋转中",
-    extending: "气缸伸出",
+    extending: "取货就绪",
     suction: "真空吸附",
-    retracting: "回收中",
+    retracting: "复位中",
     dropping: "落箱中",
     paused: "已暂停",
     completed: "已完成",
@@ -242,7 +239,6 @@ type AnimatedRobotDisplay = {
   xColumn: number;
   zLevel: number;
   facingScale: number;
-  cylinderProgress: number;
   vacuumProgress: number;
 };
 
@@ -268,7 +264,6 @@ function toAnimatedRobotDisplay(robot: TwinRobotState): AnimatedRobotDisplay {
     xColumn: robot.xColumn,
     zLevel: robot.zLevel,
     facingScale: sideToScale(robot.facingSide),
-    cylinderProgress: robot.cylinderExtended ? 1 : 0,
     vacuumProgress: robot.vacuumOn ? 1 : 0,
   };
 }
@@ -287,17 +282,12 @@ function easeOutCubic(progress: number) {
   return 1 - Math.pow(1 - progress, 3);
 }
 
-function easeOutQuint(progress: number) {
-  return 1 - Math.pow(1 - progress, 5);
-}
-
 function getPhaseMotionDuration(phase: TwinMachinePhase, playbackSpeed: PlaybackSpeed) {
   return Math.max(120, PHASE_MOTION_DURATION[phase] / playbackSpeed);
 }
 
 function getPhaseMotionEasing(phase: TwinMachinePhase) {
   if (phase === "moving" || phase === "rotating") return easeInOutCubic;
-  if (phase === "extending") return easeOutQuint;
   return easeOutCubic;
 }
 
@@ -310,7 +300,6 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
     xColumn,
     zLevel,
     facingSide,
-    cylinderExtended,
     vacuumOn,
     phase,
     activeTaskNo,
@@ -329,7 +318,6 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
       xColumn,
       zLevel,
       facingScale: sideToScale(facingSide),
-      cylinderProgress: cylinderExtended ? 1 : 0,
       vacuumProgress: vacuumOn ? 1 : 0,
     };
     const robotPhase = phase;
@@ -350,7 +338,6 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
         xColumn: lerp(from.xColumn, to.xColumn, eased),
         zLevel: lerp(from.zLevel, to.zLevel, eased),
         facingScale: lerp(from.facingScale, to.facingScale, eased),
-        cylinderProgress: lerp(from.cylinderProgress, to.cylinderProgress, eased),
         vacuumProgress: lerp(from.vacuumProgress, to.vacuumProgress, vacuumMix),
       };
 
@@ -376,7 +363,6 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
     xColumn,
     zLevel,
     facingSide,
-    cylinderExtended,
     vacuumOn,
     phase,
     playbackSpeed,
@@ -681,14 +667,16 @@ function TwinStage({
     [focusedSlotId, slots],
   );
   const stage = useMemo(() => {
-    const rackLeft = 56;
-    const rackRight = 32;
+    const rackLeft = 64;
+    const rackRight = 46;
     const rackWidth = STAGE_VIEWBOX.width - rackLeft - rackRight;
-    const rackHeight = 184;
-    const topRackY = 76;
-    const rackGap = 126;
+    const rackHeight = 206;
+    const topRackY = 84;
+    const rackGap = 172;
     const bottomRackY = topRackY + rackHeight + rackGap;
     const railY = topRackY + rackHeight + rackGap / 2;
+    const aisleY = topRackY + rackHeight + 18;
+    const aisleHeight = rackGap - 36;
     const cellWidth = rackWidth / config.rackColumns;
     const cellHeight = rackHeight / config.rackLevels;
     const xTrackLeft = rackLeft;
@@ -701,18 +689,15 @@ function TwinStage({
     const bottomLiftY = bottomRackY + levelProgress * rackHeight;
     const facingProgress = (animatedRobot.facingScale + 1) / 2;
     const liftY = lerp(topLiftY, bottomLiftY, facingProgress);
-    const armLength = 34;
+    const armLength = 42;
     const armEndX = robotX;
     const armEndY = liftY + armLength * animatedRobot.facingScale;
-    const cylinderLength = lerp(20, 54, animatedRobot.cylinderProgress);
+    const cylinderLength = 24;
     const cylinderEndX = armEndX + animatedRobot.facingScale * 12;
     const cylinderEndY = armEndY + animatedRobot.facingScale * cylinderLength;
-    const binY = railY + 136;
-    const footerX = 24;
-    const footerWidth = STAGE_VIEWBOX.width - footerX * 2;
-    const footerY = bottomRackY + rackHeight + 22;
-    const footerTextY = footerY + 36;
+    const binY = railY + 52;
     const highlightPulse = robot.phase === "dropping" ? 1 : 0;
+    const pickHighlight = animatedRobot.vacuumProgress;
     const suctionGlow = lerp(0.2, 1, animatedRobot.vacuumProgress);
 
     return {
@@ -722,6 +707,8 @@ function TwinStage({
       topRackY,
       bottomRackY,
       rackHeight,
+      aisleY,
+      aisleHeight,
       cellWidth,
       cellHeight,
       xTrackLeft,
@@ -737,11 +724,8 @@ function TwinStage({
       cylinderEndX,
       cylinderEndY,
       binY,
-      footerX,
-      footerWidth,
-      footerY,
-      footerTextY,
       highlightPulse,
+      pickHighlight,
       suctionGlow,
     };
   }, [animatedRobot, config, robot.phase]);
@@ -770,13 +754,13 @@ function TwinStage({
     : null;
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-border/70 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_42%),linear-gradient(180deg,_rgba(15,23,42,0.04),_transparent)] px-0 py-0.5 sm:px-0.5 sm:py-1 lg:px-1 lg:py-1.5">
+    <div className="relative min-w-[980px] overflow-hidden rounded-[26px] border border-border/70 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_42%),linear-gradient(180deg,_rgba(15,23,42,0.04),_transparent)] px-0 py-0.5 shadow-inner shadow-slate-950/5 sm:min-w-[1120px] sm:px-0.5 sm:py-1 lg:px-1 lg:py-1.5 xl:min-w-0 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_42%),linear-gradient(180deg,_rgba(15,23,42,0.32),_transparent)]">
       <div className="absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(59,130,246,0.08),transparent)]" />
       <svg
         viewBox={`0 0 ${STAGE_VIEWBOX.width} ${STAGE_VIEWBOX.height}`}
-        className="relative aspect-[1760/680] w-full"
+        className="relative aspect-[1760/720] w-full"
         role="img"
-        aria-label="立库出库系统数字孪生舞台"
+        aria-label="数字孪生货架动画"
       >
         <defs>
           <linearGradient id="stage-floor" x1="0" x2="1" y1="0" y2="1">
@@ -801,7 +785,6 @@ function TwinStage({
         </defs>
 
         <circle cx="186" cy="132" r="180" fill="rgba(59,130,246,0.09)" opacity="0.22" />
-        <circle cx={STAGE_VIEWBOX.width - 186} cy="564" r="220" fill="rgba(255,255,255,0.52)" opacity="0.34" />
         <rect
           x={stage.rackLeft - 12}
           y={stage.topRackY - 26}
@@ -818,20 +801,28 @@ function TwinStage({
           rx="28"
           fill="rgba(255,255,255,0.14)"
         />
-        <rect x={stage.footerX} y={stage.footerY} width={stage.footerWidth} height="64" rx="24" fill="url(#stage-floor)" opacity="0.68" />
-
-        <text x="18" y="34" className="fill-muted-foreground text-[15px] font-semibold">
-          立库出库系统数字孪生舞台
-        </text>
-        <text x="18" y="52" className="fill-muted-foreground text-[12px]">
-          X 轴 5 米 / 30 列，Z 轴 2 米 / 8 层，单巷道上下双排货架
-        </text>
+        <rect
+          x={stage.rackLeft - 10}
+          y={stage.aisleY}
+          width={stage.rackWidth + 20}
+          height={stage.aisleHeight}
+          rx="30"
+          fill="rgba(248,250,252,0.20)"
+          stroke="rgba(148,163,184,0.20)"
+          strokeWidth="1.5"
+        />
 
         <line x1={stage.xTrackLeft} y1={stage.railY} x2={stage.xTrackRight} y2={stage.railY} stroke="rgba(71,85,105,0.42)" strokeWidth="14" strokeLinecap="round" />
         <line x1={stage.xTrackLeft} y1={stage.railY} x2={stage.xTrackRight} y2={stage.railY} stroke="rgba(148,163,184,0.18)" strokeWidth="28" strokeLinecap="round" />
 
         <rect x={stage.rackLeft} y={stage.topRackY} width={stage.rackWidth} height={stage.rackHeight} rx="20" fill="rgba(248,250,252,0.22)" stroke="rgba(148,163,184,0.42)" strokeWidth="2" />
         <rect x={stage.rackLeft} y={stage.bottomRackY} width={stage.rackWidth} height={stage.rackHeight} rx="20" fill="rgba(248,250,252,0.22)" stroke="rgba(148,163,184,0.42)" strokeWidth="2" />
+        <text x={stage.rackLeft} y={stage.topRackY - 14} className="fill-muted-foreground text-[11px] font-medium">
+          上侧货架
+        </text>
+        <text x={stage.rackLeft} y={stage.bottomRackY - 14} className="fill-muted-foreground text-[11px] font-medium">
+          下侧货架
+        </text>
 
         {highlightedColumns.map((column) => {
           const x = stage.rackLeft + (column - 1) * stage.cellWidth;
@@ -973,16 +964,33 @@ function TwinStage({
             y1={stage.armEndY - stage.railY}
             x2={stage.cylinderEndX - stage.robotX}
             y2={stage.cylinderEndY - stage.railY}
-            stroke={robot.phase === "extending" || robot.phase === "suction" ? "rgba(245,158,11,0.92)" : "rgba(148,163,184,0.88)"}
+            stroke="rgba(148,163,184,0.88)"
             strokeWidth="9"
             strokeLinecap="round"
+          />
+          <line
+            x1={stage.armEndX - stage.robotX}
+            y1={stage.armEndY - stage.railY}
+            x2={stage.cylinderEndX - stage.robotX}
+            y2={stage.cylinderEndY - stage.railY}
+            stroke="rgba(245,158,11,0.92)"
+            strokeWidth="9"
+            strokeLinecap="round"
+            opacity={stage.pickHighlight}
           />
           <circle
             cx={stage.cylinderEndX - stage.robotX}
             cy={stage.cylinderEndY - stage.railY}
             r={7.5 + stage.suctionGlow * 2}
-            fill={robot.vacuumOn ? "rgba(245,158,11,1)" : "rgba(15,23,42,0.92)"}
-            opacity={0.88 + stage.suctionGlow * 0.12}
+            fill="rgba(15,23,42,0.92)"
+            opacity={0.9}
+          />
+          <circle
+            cx={stage.cylinderEndX - stage.robotX}
+            cy={stage.cylinderEndY - stage.railY}
+            r={7.5 + stage.suctionGlow * 2}
+            fill="rgba(245,158,11,1)"
+            opacity={stage.pickHighlight}
           />
           {robot.vacuumOn ? (
             <circle
@@ -1019,26 +1027,17 @@ function TwinStage({
         </g>
 
         {activeStep ? (
-          <>
-            <line
-              x1={stage.robotX}
-              y1={stage.liftY}
-              x2={activeTarget?.x ?? stage.robotX}
-              y2={activeTarget?.y ?? stage.liftY}
-              stroke="rgba(59,130,246,0.4)"
-              strokeWidth="3"
-              strokeDasharray="12 12"
-              className="twin-dash-line"
-            />
-            <text x={stage.stageCenterX} y={stage.footerTextY} textAnchor="middle" className="fill-foreground text-[13px] font-medium">
-              当前目标：{sideLabel(activeStep.side)}侧 {activeStep.column} 列 {activeStep.level} 层 · {activeStep.productName} ×{activeStep.quantity}
-            </text>
-          </>
-        ) : (
-          <text x={stage.stageCenterX} y={stage.footerTextY} textAnchor="middle" className="fill-muted-foreground text-[13px]">
-            当前任务已完成，可选择重播或切换任务
-          </text>
-        )}
+          <line
+            x1={stage.robotX}
+            y1={stage.liftY}
+            x2={activeTarget?.x ?? stage.robotX}
+            y2={activeTarget?.y ?? stage.liftY}
+            stroke="rgba(59,130,246,0.4)"
+            strokeWidth="3"
+            strokeDasharray="12 12"
+            className="twin-dash-line"
+          />
+        ) : null}
       </svg>
     </div>
   );
@@ -1525,7 +1524,7 @@ export default function DigitalTwinPage() {
             phase,
             activeSlotId: step.slotId,
             activeTaskNo: step.taskNo,
-            cylinderExtended: phase === "extending" || phase === "suction",
+            cylinderExtended: false,
             vacuumOn: phase === "suction",
           };
         });
@@ -1712,10 +1711,6 @@ export default function DigitalTwinPage() {
   const stageTargetLabel = activeStep
     ? `${sideLabel(activeStep.side)}侧 ${activeStep.column} 列 ${activeStep.level} 层`
     : "当前任务已完成";
-  const focusSlotLabel = selectedSlot
-    ? `${sideLabel(selectedSlot.side)}-${selectedSlot.column}-${selectedSlot.level}`
-    : "未聚焦库位";
-  const focusSlotDescription = selectedSlot?.productName ?? "点击舞台库位或步骤明细查看详情";
   const runtimeCaption = mode === "simulation"
     ? simulationStatus === "running"
       ? "仿真正在推进当前任务。"
@@ -1742,9 +1737,9 @@ export default function DigitalTwinPage() {
     : "从任务队列中选择一个任务并开始执行。";
 
   return (
-    <div className="min-h-[calc(100vh-3rem)] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.10),_transparent_36%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.82)_48%,rgba(255,255,255,0.98))] p-4 sm:p-6">
+    <div className="min-h-[calc(100vh-3rem)] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.10),_transparent_36%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.82)_48%,rgba(255,255,255,0.98))] p-4 sm:p-6 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.16),_transparent_36%),linear-gradient(180deg,rgba(2,6,23,0.96),rgba(15,23,42,0.92)_48%,rgba(2,6,23,0.98))]">
       <div className="mx-auto flex max-w-[1820px] flex-col gap-5">
-        <section className="overflow-hidden rounded-[32px] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(248,250,252,0.88))] shadow-[0_24px_64px_-40px_rgba(15,23,42,0.45)] backdrop-blur-sm">
+        <section className="overflow-hidden rounded-[32px] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(248,250,252,0.88))] shadow-[0_24px_64px_-40px_rgba(15,23,42,0.45)] backdrop-blur-sm dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.94),rgba(30,41,59,0.88))]">
           <div className="grid gap-6 px-5 py-5 sm:px-6 sm:py-6 xl:grid-cols-[minmax(0,1.2fr)_420px] xl:items-end">
             <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-2">
@@ -1780,7 +1775,7 @@ export default function DigitalTwinPage() {
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-border/70 bg-white/70 px-4 py-4 shadow-sm shadow-slate-950/5">
+              <div className="rounded-[24px] border border-border/70 bg-background/75 px-4 py-4 shadow-sm shadow-slate-950/5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-medium uppercase tracking-[0.26em] text-muted-foreground">
@@ -1803,7 +1798,7 @@ export default function DigitalTwinPage() {
                     </span>
                     <span className="font-medium text-foreground">{progressPercent}%</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-200/80">
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary/80">
                     <div
                       className="h-full rounded-full bg-[linear-gradient(90deg,rgba(37,99,235,0.85),rgba(14,165,233,0.75))] transition-all duration-500"
                       style={{ width: `${progressPercent}%` }}
@@ -1814,24 +1809,24 @@ export default function DigitalTwinPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[24px] border border-border/70 bg-white/72 px-4 py-4 shadow-sm shadow-slate-950/5">
+              <div className="rounded-[24px] border border-border/70 bg-background/75 px-4 py-4 shadow-sm shadow-slate-950/5">
                 <p className="text-xs text-muted-foreground">当前设备相位</p>
                 <p className={cn("mt-2 text-xl font-semibold", headerPhaseTone)}>{headerPhase}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{mode === "simulation" ? "机械臂实时动画状态" : "PLC 返回的设备状态"}</p>
               </div>
-              <div className="rounded-[24px] border border-border/70 bg-white/72 px-4 py-4 shadow-sm shadow-slate-950/5">
+              <div className="rounded-[24px] border border-border/70 bg-background/75 px-4 py-4 shadow-sm shadow-slate-950/5">
                 <p className="text-xs text-muted-foreground">订单步骤进度</p>
                 <p className="mt-2 text-xl font-semibold">{completedSteps}/{totalSteps}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {totalSteps > 0 ? `已完成 ${progressPercent}%` : "等待选择任务"}
                 </p>
               </div>
-              <div className="rounded-[24px] border border-border/70 bg-white/72 px-4 py-4 shadow-sm shadow-slate-950/5">
+              <div className="rounded-[24px] border border-border/70 bg-background/75 px-4 py-4 shadow-sm shadow-slate-950/5">
                 <p className="text-xs text-muted-foreground">执行队列</p>
                 <p className="mt-2 text-xl font-semibold">{actionableQueueCount}</p>
                 <p className="mt-1 text-xs text-muted-foreground">待执行与执行中任务总数</p>
               </div>
-              <div className="rounded-[24px] border border-border/70 bg-white/72 px-4 py-4 shadow-sm shadow-slate-950/5">
+              <div className="rounded-[24px] border border-border/70 bg-background/75 px-4 py-4 shadow-sm shadow-slate-950/5">
                 <p className="text-xs text-muted-foreground">中转箱累计</p>
                 <p className="mt-2 text-xl font-semibold">{transferTotal}</p>
                 <p className="mt-1 text-xs text-muted-foreground">已按 SKU 聚合完成的件数</p>
@@ -1841,38 +1836,8 @@ export default function DigitalTwinPage() {
         </section>
 
         <div className="space-y-5">
-          <section className="overflow-hidden rounded-[32px] border border-border/70 bg-card/92 shadow-[0_24px_64px_-44px_rgba(15,23,42,0.4)] backdrop-blur-sm">
-            <div className="flex flex-col gap-4 border-b border-border/70 px-5 py-5 sm:px-6 xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] xl:items-end">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.26em] text-muted-foreground">
-                  <Radar className="size-3.5" />
-                  执行舞台
-                </div>
-                <div className="flex flex-wrap items-end gap-3">
-                  <h2 className="text-2xl font-semibold tracking-tight">机械臂与货架主视图</h2>
-                  <p className="max-w-2xl pb-1 text-sm text-muted-foreground">
-                    当前目标、运行相位和库位聚焦保持在同一视觉中心，便于连续观察执行过程。
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-border/70 bg-muted/25 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">当前目标</p>
-                  <p className="mt-1 text-sm font-semibold text-foreground">{stageTargetLabel}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {activeStep ? `${activeStep.productName} ×${activeStep.quantity}` : "可切换任务或重播"}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border/70 bg-muted/25 px-4 py-3">
-                  <p className="text-xs text-muted-foreground">焦点库位</p>
-                  <p className="mt-1 text-sm font-semibold text-foreground">{focusSlotLabel}</p>
-                  <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{focusSlotDescription}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-2 py-2 sm:px-3 sm:py-3 lg:px-4">
+          <section className="overflow-hidden">
+            <div className="nice-scrollbar overflow-x-auto">
               <TwinStage
                 config={config}
                 slots={slots}
@@ -1882,45 +1847,6 @@ export default function DigitalTwinPage() {
                 focusedSlotId={selectedSlotId}
                 onSelectSlot={handleSelectSlot}
               />
-            </div>
-
-            <div className="grid gap-3 border-t border-border/70 px-5 py-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <ArrowRightLeft className="size-4" />
-                  <span className="text-xs font-medium">货架规模</span>
-                </div>
-                <p className="mt-2 text-lg font-semibold">480 个库位</p>
-                <p className="mt-1 text-xs text-muted-foreground">30 列 × 8 层，上下双排</p>
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Gauge className="size-4" />
-                  <span className="text-xs font-medium">轨道参数</span>
-                </div>
-                <p className="mt-2 text-lg font-semibold">X 轴 5m / Z 轴 2m</p>
-                <p className="mt-1 text-xs text-muted-foreground">单巷道桁架机械臂执行范围</p>
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Cable className="size-4" />
-                  <span className="text-xs font-medium">{mode === "simulation" ? "仿真参数" : "PLC 状态"}</span>
-                </div>
-                <p className="mt-2 text-lg font-semibold">
-                  {mode === "simulation" ? `${playbackSpeed}x 播放速度` : !plcStatus.configured ? "未配置" : plcStatus.connected ? "在线" : "离线"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">{runtimeDetail}</p>
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Boxes className="size-4" />
-                  <span className="text-xs font-medium">执行节拍</span>
-                </div>
-                <p className="mt-2 text-lg font-semibold">{actionableQueueCount} 条任务待观察</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {activeTask ? `当前聚焦 ${activeTask.taskNo}` : "从下方任务工作台选择任务"}
-                </p>
-              </div>
             </div>
           </section>
 

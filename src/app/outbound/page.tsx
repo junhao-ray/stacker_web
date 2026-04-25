@@ -17,18 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 
-import type { OutboundStatus } from "@/lib/types";
 import { OUTBOUND_TASKS } from "@/lib/mock-data";
-
-// ─── 阶段配置 ────────────────────────────────────────────────────────────────
-
-const STAGE_COLORS = {
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  emerald: "#10b981",
-};
 
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
@@ -94,7 +84,7 @@ export default function OutboundPage() {
       <div className="flex gap-4 flex-1 min-h-0">
 
         {/* ═══ 左栏 · 待拣货队列 ═══ */}
-        <div className="w-[280px] flex-shrink-0 flex flex-col min-h-0">
+        <div className="w-[260px] flex-shrink-0 flex flex-col min-h-0">
           <div className="flex items-center gap-2.5 mb-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
               <ClipboardList className="size-4 text-amber-600 dark:text-amber-400" />
@@ -108,7 +98,7 @@ export default function OutboundPage() {
             <Search className="absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
             <Input value={searchPending} onChange={(e) => setSearchPending(e.target.value)} placeholder="搜索…" className="h-8 pl-8 text-xs" />
           </div>
-          <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+          <div className="no-scrollbar flex-1 overflow-y-auto space-y-1.5 pr-1.5">
             {pendingTasks.map((task, i) => (
               <div
                 key={task.taskNo}
@@ -255,7 +245,7 @@ export default function OutboundPage() {
         </div>
 
         {/* ═══ 右栏 · 已出库记录 ═══ */}
-        <div className="w-[280px] flex-shrink-0 flex flex-col min-h-0">
+        <div className="w-[260px] flex-shrink-0 flex flex-col min-h-0">
           <div className="flex items-center gap-2.5 mb-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15">
               <Truck className="size-4 text-emerald-600 dark:text-emerald-400" />
@@ -269,7 +259,7 @@ export default function OutboundPage() {
             <Search className="absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
             <Input value={searchCompleted} onChange={(e) => setSearchCompleted(e.target.value)} placeholder="搜索…" className="h-8 pl-8 text-xs" />
           </div>
-          <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+          <div className="no-scrollbar flex-1 overflow-y-auto space-y-1.5 pr-1.5">
             {completedTasks.map((task, i) => (
               <div
                 key={task.taskNo}
