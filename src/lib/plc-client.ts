@@ -21,6 +21,8 @@ type ErrorPayload = {
   status?: PlcStatusSnapshot;
 };
 
+const PLC_CONFIG_TEST_CLIENT_TIMEOUT_MS = 12000;
+
 export type PlcConfigPayload = {
   path: string;
   exists: boolean;
@@ -33,6 +35,15 @@ export type PlcConnectionTestPayload = {
   message: string;
   checkedAt: string;
 };
+
+function isPlcConnectionTestPayload(value: unknown): value is PlcConnectionTestPayload {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as PlcConnectionTestPayload).ok === "boolean"
+    && typeof (value as PlcConnectionTestPayload).endpointUrl === "string"
+    && typeof (value as PlcConnectionTestPayload).message === "string"
+    && typeof (value as PlcConnectionTestPayload).checkedAt === "string";
+}
 
 export async function fetchPlcStatusSnapshot(signal?: AbortSignal): Promise<PlcStatusSnapshot> {
   const response = await fetch("/api/plc/status", {
@@ -143,16 +154,39 @@ export async function savePlcConfig(value: PlcGatewayConfigFormValue): Promise<P
 }
 
 export async function testPlcConfig(value: PlcGatewayConfigFormValue): Promise<PlcConnectionTestPayload> {
-  const response = await fetch("/api/plc/config/test", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(value),
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PLC_CONFIG_TEST_CLIENT_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch("/api/plc/config/test", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(value),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new PlcApiError(
+        "PLC 配置测试超时，请检查 endpoint、网络或 PLC OPC UA 服务状态。",
+        408,
+        "plc_config_test_timeout",
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const body = await response.json() as PlcConnectionTestPayload | ErrorPayload;
+  if (isPlcConnectionTestPayload(body)) {
+    return body;
+  }
+
   if (!response.ok) {
     const errorBody = body as ErrorPayload;
     throw new PlcApiError(
