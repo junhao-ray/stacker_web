@@ -47,11 +47,15 @@ import type {
 const TIMELINE = [
   { phase: "moving" as const, duration: 900 },
   { phase: "rotating" as const, duration: 450 },
+  { phase: "extending" as const, duration: 360 },
   { phase: "suction" as const, duration: 250 },
+  { phase: "retracting" as const, duration: 320 },
   { phase: "dropping" as const, duration: 250 },
 ];
 
 const STEP_INTERVAL = 300;
+const RELEASE_DURATION = 900;
+const RELEASE_COLUMN = 0.35;
 const STAGE_VIEWBOX = { width: 1760, height: 720 };
 
 type PlaybackSpeed = 1 | 2;
@@ -75,10 +79,11 @@ function phaseLabel(phase: TwinMachinePhase) {
     idle: "待命",
     moving: "移动中",
     rotating: "旋转中",
-    extending: "取货就绪",
+    extending: "圆球伸出",
     suction: "真空吸附",
-    retracting: "复位中",
+    retracting: "圆球收回",
     dropping: "落箱中",
+    releasing: "移至释放",
     paused: "已暂停",
     completed: "已完成",
     alarm: "告警",
@@ -239,6 +244,7 @@ type AnimatedRobotDisplay = {
   xColumn: number;
   zLevel: number;
   facingScale: number;
+  extensionProgress: number;
   vacuumProgress: number;
 };
 
@@ -250,6 +256,7 @@ const PHASE_MOTION_DURATION: Record<TwinMachinePhase, number> = {
   suction: 250,
   retracting: 300,
   dropping: 250,
+  releasing: RELEASE_DURATION,
   paused: 180,
   completed: 260,
   alarm: 180,
@@ -264,6 +271,7 @@ function toAnimatedRobotDisplay(robot: TwinRobotState): AnimatedRobotDisplay {
     xColumn: robot.xColumn,
     zLevel: robot.zLevel,
     facingScale: sideToScale(robot.facingSide),
+    extensionProgress: robot.cylinderExtended ? 1 : 0,
     vacuumProgress: robot.vacuumOn ? 1 : 0,
   };
 }
@@ -300,6 +308,7 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
     xColumn,
     zLevel,
     facingSide,
+    cylinderExtended,
     vacuumOn,
     phase,
     activeTaskNo,
@@ -313,11 +322,16 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
   useEffect(() => {
     previousPhaseRef.current = phase;
 
-    const from = displayRef.current;
+    const from: AnimatedRobotDisplay = {
+      ...displayRef.current,
+      extensionProgress: displayRef.current.extensionProgress ?? 0,
+      vacuumProgress: displayRef.current.vacuumProgress ?? 0,
+    };
     const to: AnimatedRobotDisplay = {
       xColumn,
       zLevel,
       facingScale: sideToScale(facingSide),
+      extensionProgress: cylinderExtended ? 1 : 0,
       vacuumProgress: vacuumOn ? 1 : 0,
     };
     const robotPhase = phase;
@@ -338,6 +352,7 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
         xColumn: lerp(from.xColumn, to.xColumn, eased),
         zLevel: lerp(from.zLevel, to.zLevel, eased),
         facingScale: lerp(from.facingScale, to.facingScale, eased),
+        extensionProgress: lerp(from.extensionProgress, to.extensionProgress, eased),
         vacuumProgress: lerp(from.vacuumProgress, to.vacuumProgress, vacuumMix),
       };
 
@@ -363,6 +378,7 @@ function useAnimatedRobotMotion(robot: TwinRobotState, playbackSpeed: PlaybackSp
     xColumn,
     zLevel,
     facingSide,
+    cylinderExtended,
     vacuumOn,
     phase,
     playbackSpeed,
@@ -484,6 +500,9 @@ function TwinQueuePanel({
   const activeIndex = currentStepIndex(activeTask);
   const activeStep = currentStep(activeTask);
   const plcReady = plcStatus.configured && plcStatus.connected;
+  const robotPositionLabel = robot.xColumn === RELEASE_COLUMN
+    ? "释放框位置"
+    : `朝向${sideLabel(robot.facingSide)}侧 · X${robot.xColumn} / Z${robot.zLevel}`;
   const dispatchedForActiveTask = activeTask
     ? plcStatus.currentTaskNo === activeTask.taskNo || plcPendingTaskNo === activeTask.taskNo
     : false;
@@ -580,7 +599,7 @@ function TwinQueuePanel({
               <>
                 <p className={cn("mt-2 text-lg font-semibold", statusTone(simulationStatus))}>{phaseLabel(robot.phase)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  朝向{sideLabel(robot.facingSide)}侧 · X{robot.xColumn} / Z{robot.zLevel}
+                  {robotPositionLabel}
                 </p>
               </>
             ) : (
@@ -611,8 +630,12 @@ function TwinQueuePanel({
               </>
             ) : (
               <>
-                <p className="mt-2 text-lg font-semibold text-foreground">已完成</p>
-                <p className="mt-1 text-xs text-muted-foreground">当前任务暂无待执行步骤</p>
+                <p className="mt-2 text-lg font-semibold text-foreground">
+                  {robot.phase === "releasing" ? "释放中" : "已完成"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {robot.phase === "releasing" ? "中转箱正在移动至释放框" : "当前任务暂无待执行步骤"}
+                </p>
               </>
             )}
           </div>
@@ -689,16 +712,21 @@ function TwinStage({
     const bottomLiftY = bottomRackY + levelProgress * rackHeight;
     const facingProgress = (animatedRobot.facingScale + 1) / 2;
     const liftY = lerp(topLiftY, bottomLiftY, facingProgress);
-    const armLength = 42;
-    const armEndX = robotX;
-    const armEndY = liftY + armLength * animatedRobot.facingScale;
-    const cylinderLength = 24;
-    const cylinderEndX = armEndX + animatedRobot.facingScale * 12;
-    const cylinderEndY = armEndY + animatedRobot.facingScale * cylinderLength;
+    const extensionProgress = animatedRobot.extensionProgress ?? 0;
+    const vacuumProgress = animatedRobot.vacuumProgress ?? 0;
+    const effectorAngle = animatedRobot.facingScale * 90;
+    const effectorAngleRad = (effectorAngle * Math.PI) / 180;
+    const armLength = 58;
+    const ballTravel = lerp(64, 128, extensionProgress);
+    const endEffectorX = robotX + Math.cos(effectorAngleRad) * ballTravel;
+    const endEffectorY = liftY + Math.sin(effectorAngleRad) * ballTravel;
     const binY = railY + 52;
     const highlightPulse = robot.phase === "dropping" ? 1 : 0;
-    const pickHighlight = animatedRobot.vacuumProgress;
-    const suctionGlow = lerp(0.2, 1, animatedRobot.vacuumProgress);
+    const pickHighlight = Math.max(extensionProgress * 0.35, vacuumProgress);
+    const suctionGlow = lerp(0.2, 1, vacuumProgress);
+    const releaseBoxX = 16;
+    const releaseBoxY = railY + 24;
+    const binRotation = robot.phase === "releasing" || robot.phase === "completed" ? 0 : effectorAngle;
 
     return {
       rackLeft,
@@ -719,11 +747,15 @@ function TwinStage({
       topLiftY,
       bottomLiftY,
       liftY,
-      armEndX,
-      armEndY,
-      cylinderEndX,
-      cylinderEndY,
+      effectorAngle,
+      armLength,
+      ballTravel,
+      endEffectorX,
+      endEffectorY,
       binY,
+      binRotation,
+      releaseBoxX,
+      releaseBoxY,
       highlightPulse,
       pickHighlight,
       suctionGlow,
@@ -814,6 +846,31 @@ function TwinStage({
 
         <line x1={stage.xTrackLeft} y1={stage.railY} x2={stage.xTrackRight} y2={stage.railY} stroke="rgba(71,85,105,0.42)" strokeWidth="14" strokeLinecap="round" />
         <line x1={stage.xTrackLeft} y1={stage.railY} x2={stage.xTrackRight} y2={stage.railY} stroke="rgba(148,163,184,0.18)" strokeWidth="28" strokeLinecap="round" />
+
+        <g>
+          <rect
+            x={stage.releaseBoxX}
+            y={stage.releaseBoxY - 34}
+            width="118"
+            height="68"
+            rx="16"
+            fill={robot.phase === "releasing" ? "rgba(16,185,129,0.18)" : "rgba(15,23,42,0.08)"}
+            stroke={robot.phase === "releasing" ? "rgba(16,185,129,0.72)" : "rgba(148,163,184,0.45)"}
+            strokeWidth="2.5"
+          />
+          <line
+            x1={stage.releaseBoxX + 18}
+            y1={stage.releaseBoxY - 18}
+            x2={stage.releaseBoxX + 100}
+            y2={stage.releaseBoxY - 18}
+            stroke="rgba(148,163,184,0.45)"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <text x={stage.releaseBoxX + 59} y={stage.releaseBoxY + 7} textAnchor="middle" className="fill-foreground text-[12px] font-semibold">
+            释放框
+          </text>
+        </g>
 
         <rect x={stage.rackLeft} y={stage.topRackY} width={stage.rackWidth} height={stage.rackHeight} rx="20" fill="rgba(248,250,252,0.22)" stroke="rgba(148,163,184,0.42)" strokeWidth="2" />
         <rect x={stage.rackLeft} y={stage.bottomRackY} width={stage.rackWidth} height={stage.rackHeight} rx="20" fill="rgba(248,250,252,0.22)" stroke="rgba(148,163,184,0.42)" strokeWidth="2" />
@@ -950,74 +1007,62 @@ function TwinStage({
             strokeLinecap="round"
           />
           <circle cx="0" cy={stage.liftY - stage.railY} r="15" fill="rgba(15,23,42,0.92)" stroke="rgba(148,163,184,0.45)" strokeWidth="2" />
-          <line
-            x1="0"
-            y1={stage.liftY - stage.railY}
-            x2={stage.armEndX - stage.robotX}
-            y2={stage.armEndY - stage.railY}
-            stroke="url(#robot-arm)"
-            strokeWidth="16"
-            strokeLinecap="round"
-          />
-          <line
-            x1={stage.armEndX - stage.robotX}
-            y1={stage.armEndY - stage.railY}
-            x2={stage.cylinderEndX - stage.robotX}
-            y2={stage.cylinderEndY - stage.railY}
-            stroke="rgba(148,163,184,0.88)"
-            strokeWidth="9"
-            strokeLinecap="round"
-          />
-          <line
-            x1={stage.armEndX - stage.robotX}
-            y1={stage.armEndY - stage.railY}
-            x2={stage.cylinderEndX - stage.robotX}
-            y2={stage.cylinderEndY - stage.railY}
-            stroke="rgba(245,158,11,0.92)"
-            strokeWidth="9"
-            strokeLinecap="round"
-            opacity={stage.pickHighlight}
-          />
-          <circle
-            cx={stage.cylinderEndX - stage.robotX}
-            cy={stage.cylinderEndY - stage.railY}
-            r={7.5 + stage.suctionGlow * 2}
-            fill="rgba(15,23,42,0.92)"
-            opacity={0.9}
-          />
-          <circle
-            cx={stage.cylinderEndX - stage.robotX}
-            cy={stage.cylinderEndY - stage.railY}
-            r={7.5 + stage.suctionGlow * 2}
-            fill="rgba(245,158,11,1)"
-            opacity={stage.pickHighlight}
-          />
-          {robot.vacuumOn ? (
-            <circle
-              cx={stage.cylinderEndX - stage.robotX}
-              cy={stage.cylinderEndY - stage.railY}
-              r={14 + stage.suctionGlow * 5}
-              className="twin-vacuum-halo"
-              fill="rgba(245,158,11,0.18)"
+          <g transform={`translate(0, ${stage.liftY - stage.railY}) rotate(${stage.effectorAngle})`}>
+            <line
+              x1="0"
+              y1="0"
+              x2={stage.armLength}
+              y2="0"
+              stroke="url(#robot-arm)"
+              strokeWidth="16"
+              strokeLinecap="round"
             />
-          ) : null}
-          <line x1="0" y1="20" x2="0" y2={stage.binY - stage.railY - 26} stroke="rgba(71,85,105,0.65)" strokeWidth="5" strokeLinecap="round" />
-          <rect x="-52" y={stage.binY - stage.railY - 26} width="104" height="52" rx="14" fill="rgba(15,23,42,0.92)" stroke={robot.phase === "dropping" ? "rgba(16,185,129,0.62)" : "rgba(148,163,184,0.35)"} strokeWidth="2.5" />
-          <text x="0" y={stage.binY - stage.railY + 6} textAnchor="middle" className="fill-white text-[11px] font-medium">
-            中转箱
-          </text>
+            <rect x="16" y="-14" width="46" height="28" rx="14" fill="rgba(15,23,42,0.86)" stroke="rgba(148,163,184,0.28)" strokeWidth="1.5" />
+            <circle
+              cx={stage.ballTravel}
+              cy="0"
+              r={12 + stage.suctionGlow * 2.5}
+              fill="rgba(15,23,42,0.94)"
+              stroke="rgba(148,163,184,0.55)"
+              strokeWidth="2"
+            />
+            <circle
+              cx={stage.ballTravel}
+              cy="0"
+              r={8 + stage.suctionGlow * 2.5}
+              fill="rgba(245,158,11,0.95)"
+              opacity={stage.pickHighlight}
+            />
+            {robot.vacuumOn ? (
+              <circle
+                cx={stage.ballTravel}
+                cy="0"
+                r={20 + stage.suctionGlow * 6}
+                className="twin-vacuum-halo"
+                fill="rgba(245,158,11,0.18)"
+              />
+            ) : null}
+          </g>
+          <line x1="-42" y1="20" x2="-42" y2={stage.binY - stage.railY} stroke="rgba(71,85,105,0.55)" strokeWidth="5" strokeLinecap="round" />
+          <g transform={`translate(-42, ${stage.binY - stage.railY}) rotate(${stage.binRotation})`}>
+            <circle cx="0" cy="0" r="12" fill="rgba(15,23,42,0.92)" stroke="rgba(148,163,184,0.45)" strokeWidth="2" />
+            <rect x="0" y="-26" width="112" height="52" rx="14" fill="rgba(15,23,42,0.92)" stroke={robot.phase === "dropping" || robot.phase === "releasing" ? "rgba(16,185,129,0.62)" : "rgba(148,163,184,0.35)"} strokeWidth="2.5" />
+            <text x="56" y="5" textAnchor="middle" className="fill-white text-[11px] font-medium">
+              {robot.phase === "releasing" ? "释放中" : "中转箱"}
+            </text>
+          </g>
           {robot.phase === "dropping" ? (
             <g key={dropBurstKey}>
               <circle
-                cx={stage.cylinderEndX - stage.robotX}
-                cy={stage.cylinderEndY - stage.railY + 22}
+                cx={stage.endEffectorX - stage.robotX}
+                cy={stage.endEffectorY - stage.railY + 22}
                 r={7 + stage.highlightPulse}
                 className="twin-drop-pulse"
                 fill="rgba(245,158,11,0.95)"
               />
               <circle
-                cx={stage.cylinderEndX - stage.robotX}
-                cy={stage.cylinderEndY - stage.railY + 11}
+                cx={stage.endEffectorX - stage.robotX}
+                cy={stage.endEffectorY - stage.railY + 11}
                 r="4.5"
                 className="twin-drop-pulse twin-drop-pulse-delay"
                 fill="rgba(251,191,36,0.85)"
@@ -1028,8 +1073,8 @@ function TwinStage({
 
         {activeStep ? (
           <line
-            x1={stage.robotX}
-            y1={stage.liftY}
+            x1={stage.endEffectorX}
+            y1={stage.endEffectorY}
             x2={activeTarget?.x ?? stage.robotX}
             y2={activeTarget?.y ?? stage.liftY}
             stroke="rgba(59,130,246,0.4)"
@@ -1065,10 +1110,10 @@ function TwinDetailPanel({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <div className="space-y-4">
           <div className="rounded-[24px] border border-border/70 bg-muted/28 px-4 py-4">
-            <p className="text-xs text-muted-foreground">累计件数</p>
+            <p className="text-xs text-muted-foreground">中转箱包数</p>
             <p className="mt-2 text-3xl font-semibold">{totalQuantity}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              已完成 {transferBin.length} 个 SKU 聚合步骤
+              已入箱 {transferBin.length} 包，等待最终释放
             </p>
           </div>
 
@@ -1172,6 +1217,7 @@ export default function DigitalTwinPage() {
   const generationRef = useRef(0);
   const activeTaskRef = useRef<TwinQueueTask | null>(null);
   const slotsRef = useRef<TwinRackSlot[]>([]);
+  const transferBinRef = useRef<TwinTransferBinEntry[]>([]);
   const playbackSpeedRef = useRef<PlaybackSpeed>(1);
   const pollingTimerRef = useRef<number | null>(null);
 
@@ -1186,6 +1232,10 @@ export default function DigitalTwinPage() {
   useEffect(() => {
     slotsRef.current = slots;
   }, [slots]);
+
+  useEffect(() => {
+    transferBinRef.current = transferBin;
+  }, [transferBin]);
 
   useEffect(() => {
     let ignore = false;
@@ -1208,6 +1258,7 @@ export default function DigitalTwinPage() {
       setActiveTask(currentTask);
       activeTaskRef.current = currentTask;
       slotsRef.current = currentSlots;
+      transferBinRef.current = currentTransferBin;
       setLogs(currentLogs);
       setTransferBin(currentTransferBin);
       setSelectedSlotId(currentTask?.steps[0]?.slotId ?? null);
@@ -1281,6 +1332,7 @@ export default function DigitalTwinPage() {
     setSimulationStatus("idle");
     setAlarmMessage(null);
     setTransferBin([]);
+    transferBinRef.current = [];
     if (baselineSnapshot) {
       const nextSlots = cloneSlots(baselineSnapshot.slots);
       setSlots(nextSlots);
@@ -1348,6 +1400,7 @@ export default function DigitalTwinPage() {
     setSlots(cloneSlots(baselineSnapshot.slots));
     setRobot(nextRobot);
     setTransferBin([]);
+    transferBinRef.current = [];
     setLogs(nextLogs);
     setSelectedSlotId(nextTask?.steps[0]?.slotId ?? null);
     setSimulationStatus("idle");
@@ -1401,6 +1454,7 @@ export default function DigitalTwinPage() {
     setSlots(nextSlots);
     setRobot(selectedRobot);
     setTransferBin([]);
+    transferBinRef.current = [];
     setLogs(nextLogs.slice(0, 24));
     setSelectedSlotId(selectedTask?.steps[0]?.slotId ?? null);
     setSimulationStatus("idle");
@@ -1478,6 +1532,51 @@ export default function DigitalTwinPage() {
     pushLog("error", message);
   }
 
+  function scheduleRelease(taskNo: string) {
+    const generation = generationRef.current;
+    const speed = playbackSpeedRef.current;
+    const packageCount = totalPickedQuantity(transferBinRef.current);
+
+    pushLog("info", `当前任务 ${taskNo} 的 ${packageCount} 包种子袋已全部进入中转箱，移动至最左侧释放框。`);
+    setRobot((current) => current ? {
+      ...current,
+      xColumn: RELEASE_COLUMN,
+      phase: "releasing",
+      facingSide: "left",
+      activeSlotId: null,
+      activeTaskNo: taskNo,
+      cylinderExtended: false,
+      vacuumOn: false,
+    } : current);
+
+    const releaseTimer = window.setTimeout(() => {
+      if (generation !== generationRef.current) return;
+
+      const releasedCount = totalPickedQuantity(transferBinRef.current);
+      transferBinRef.current = [];
+      setTransferBin([]);
+
+      const completedTask = activeTaskRef.current ? {
+        ...activeTaskRef.current,
+        status: "completed" as TwinQueueTaskStatus,
+        completedSteps: countCompletedSteps(activeTaskRef.current),
+      } : null;
+      activeTaskRef.current = completedTask;
+      setActiveTask(completedTask);
+      setQueue((current) => updateQueueFromTask(current, completedTask, "completed"));
+      setSimulationStatus("completed");
+      setRobot((current) => current ? {
+        ...current,
+        phase: "completed",
+        cylinderExtended: false,
+        vacuumOn: false,
+      } : current);
+      pushLog("success", `任务 ${taskNo} 已完成，中转箱已在最左侧释放框释放 ${releasedCount} 包种子袋。`);
+    }, RELEASE_DURATION / speed);
+
+    timersRef.current.push(releaseTimer);
+  }
+
   function scheduleStep(step: TwinPickStep) {
     const generation = generationRef.current;
     const speed = playbackSpeedRef.current;
@@ -1524,7 +1623,7 @@ export default function DigitalTwinPage() {
             phase,
             activeSlotId: step.slotId,
             activeTaskNo: step.taskNo,
-            cylinderExtended: false,
+            cylinderExtended: phase === "extending" || phase === "suction",
             vacuumOn: phase === "suction",
           };
         });
@@ -1535,8 +1634,14 @@ export default function DigitalTwinPage() {
         if (phase === "rotating") {
           pushLog("info", `机械臂朝${sideLabel(step.side)}侧旋转到位。`);
         }
+        if (phase === "extending") {
+          pushLog("info", `球形末端伸出至 ${step.productName} 库位。`);
+        }
         if (phase === "suction") {
           pushLog("warning", `吸取 ${step.productName} ×${step.quantity}。`);
+        }
+        if (phase === "retracting") {
+          pushLog("info", "球形末端回收，中转箱保持同向翻转。");
         }
         if (phase === "dropping") {
           pushLog("success", `${step.productName} 已掉落至中转箱。`);
@@ -1565,19 +1670,20 @@ export default function DigitalTwinPage() {
       slotsRef.current = updatedSlots;
       setSlots(updatedSlots);
 
-      setTransferBin((current) => [
+      const nextTransferBin = [
         {
           productCode: step.productCode,
           productName: step.productName,
           quantity: step.quantity,
           pickedAt: formatTime(new Date()),
         },
-        ...current,
-      ]);
+        ...transferBinRef.current,
+      ];
+      transferBinRef.current = nextTransferBin;
+      setTransferBin(nextTransferBin);
 
       const nextTask = setTaskStepStatus(activeTaskRef.current, step.id, "completed");
-      const completed = nextTask ? countCompletedSteps(nextTask) >= nextTask.steps.length : false;
-      const nextStatus: TwinQueueTaskStatus = completed ? "completed" : "picking";
+      const nextStatus: TwinQueueTaskStatus = "picking";
       const updatedTask = nextTask ? {
         ...nextTask,
         status: nextStatus,
@@ -1604,9 +1710,7 @@ export default function DigitalTwinPage() {
         const nextStep = currentStep(nextTask);
 
         if (!nextStep) {
-          setSimulationStatus("completed");
-          setRobot((current) => current ? { ...current, phase: "completed" } : current);
-          pushLog("success", `任务 ${step.taskNo} 已完成，订单全部明细已落入中转箱。`);
+          scheduleRelease(step.taskNo);
           return;
         }
 
@@ -1627,6 +1731,13 @@ export default function DigitalTwinPage() {
 
     const nextStep = currentStep(activeTaskRef.current);
     if (!nextStep) {
+      if (activeTaskRef.current && transferBinRef.current.length > 0) {
+        setSimulationStatus("running");
+        setAlarmMessage(null);
+        scheduleRelease(activeTaskRef.current.taskNo);
+        return;
+      }
+
       setSimulationStatus("completed");
       setRobot((current) => current ? { ...current, phase: "completed" } : current);
       return;
@@ -1660,6 +1771,13 @@ export default function DigitalTwinPage() {
 
     const nextStep = currentStep(activeTaskRef.current);
     if (!nextStep) {
+      if (activeTaskRef.current && transferBinRef.current.length > 0) {
+        pushLog("info", "继续执行中转箱最终释放。");
+        setSimulationStatus("running");
+        scheduleRelease(activeTaskRef.current.taskNo);
+        return;
+      }
+
       setSimulationStatus("completed");
       return;
     }
@@ -1668,7 +1786,7 @@ export default function DigitalTwinPage() {
     activeTaskRef.current = resumedTask;
     setActiveTask(resumedTask);
 
-    pushLog("info", "继续执行当前聚合步骤。");
+    pushLog("info", "继续执行当前单包取放步骤。");
     handleStart();
   }
 
@@ -1829,7 +1947,7 @@ export default function DigitalTwinPage() {
               <div className="rounded-[24px] border border-border/70 bg-background/75 px-4 py-4 shadow-sm shadow-slate-950/5">
                 <p className="text-xs text-muted-foreground">中转箱累计</p>
                 <p className="mt-2 text-xl font-semibold">{transferTotal}</p>
-                <p className="mt-1 text-xs text-muted-foreground">已按 SKU 聚合完成的件数</p>
+                <p className="mt-1 text-xs text-muted-foreground">当前中转箱内包数</p>
               </div>
             </div>
           </div>
@@ -1935,8 +2053,8 @@ export default function DigitalTwinPage() {
               </FoldSection>
 
               <FoldSection
-                title="步骤明细"
-                description={activeTask ? `当前任务 ${headerTask} 的聚合步骤明细。` : "当前没有可查看的任务步骤。"}
+                title="单包步骤"
+                description={activeTask ? `当前任务 ${headerTask} 的单包取放明细。` : "当前没有可查看的任务步骤。"}
                 badge={stepBadge}
                 icon={ScanSearch}
                 defaultOpen

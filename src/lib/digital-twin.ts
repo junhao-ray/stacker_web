@@ -85,7 +85,7 @@ for (const slot of RACK_SLOTS) {
   SLOT_BY_PRODUCT.set(slot.productCode, bucket);
 }
 
-function buildPickStep(item: OutboundTask["items"][number], taskNo: string, index: number): TwinPickStep {
+function buildPickSteps(item: OutboundTask["items"][number], taskNo: string, index: number): TwinPickStep[] {
   const matchingSlots = SLOT_BY_PRODUCT.get(item.productCode) ?? [];
   const fallbackSlot = RACK_SLOTS[(index + taskNo.length) % RACK_SLOTS.length];
   const preferredSlot =
@@ -93,22 +93,22 @@ function buildPickStep(item: OutboundTask["items"][number], taskNo: string, inde
     matchingSlots[0] ??
     fallbackSlot;
 
-  return {
-    id: `${taskNo}-${item.productCode}-${index + 1}`,
+  return Array.from({ length: item.quantity }, (_, packageIndex) => ({
+    id: `${taskNo}-${item.productCode}-${index + 1}-${packageIndex + 1}`,
     taskNo,
     productCode: item.productCode,
     productName: item.productName,
-    quantity: item.quantity,
+    quantity: 1,
     slotId: preferredSlot.id,
     side: preferredSlot.side,
     column: preferredSlot.column,
     level: preferredSlot.level,
     status: "pending",
-  };
+  }));
 }
 
 function toQueueTask(task: OutboundTask): TwinQueueTask {
-  const steps = task.items.map((item, index) => buildPickStep(item, task.taskNo, index));
+  const steps = task.items.flatMap((item, index) => buildPickSteps(item, task.taskNo, index));
   const isCompleted = task.status === "completed";
 
   return {
@@ -118,7 +118,7 @@ function toQueueTask(task: OutboundTask): TwinQueueTask {
     createdAt: task.createdAt,
     operator: task.operator,
     stepCount: steps.length,
-    totalQuantity: steps.reduce((sum, step) => sum + step.quantity, 0),
+    totalQuantity: steps.length,
     completedSteps: isCompleted ? steps.length : 0,
     steps: steps.map((step) => ({
       ...step,

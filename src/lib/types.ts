@@ -94,6 +94,7 @@ export type TwinMachinePhase =
   | "suction"
   | "retracting"
   | "dropping"
+  | "releasing"
   | "paused"
   | "completed"
   | "alarm";

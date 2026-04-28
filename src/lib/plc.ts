@@ -7,7 +7,7 @@ import type {
   TwinQueueTask,
 } from "@/lib/types";
 
-export const PLC_MAX_TASK_STEPS = 32;
+export const PLC_MAX_TASK_STEPS = 256;
 export const PLC_MAX_STRING_LENGTH = 64;
 
 export const PLC_COMMANDS: PlcCommand[] = ["dispatchTask", "start", "pause", "resume", "reset"];
@@ -131,7 +131,7 @@ export function buildDispatchTaskPayload(task: TwinQueueTask): DispatchTaskPaylo
   const steps = task.steps.map<DispatchTaskStep>((step, index) => ({
     index: index + 1,
     productCode: step.productCode,
-    quantity: step.quantity,
+    quantity: 1,
     side: step.side,
     column: step.column,
     level: step.level,
