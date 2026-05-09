@@ -44,38 +44,32 @@ export class PlcGateway {
     const transportStatus = this.transport.getStatus();
 
     if (!transportStatus.configured || !transportStatus.connected) {
-      throw new GatewayHttpError("PLC 网关未配置或 OPC UA 未连接", 503, "gateway_unavailable", "transport_error");
+      throw new GatewayHttpError("PLC gateway is not configured or OPC UA is disconnected", 503, "gateway_unavailable", "transport_error");
     }
 
     if (this.inFlight) {
-      throw new GatewayHttpError("已有命令正在执行中", 409, "command_in_flight", "transport_error");
+      throw new GatewayHttpError("A PLC command is already in flight", 409, "command_in_flight", "transport_error");
     }
 
     this.assertCommandAllowed(
       request.command,
       transportStatus.snapshot.machineState,
-      transportStatus.snapshot.currentTaskNo,
       transportStatus.snapshot.alarm,
-      request.task?.taskNo ?? null,
+      transportStatus.snapshot.stepBusy,
     );
 
     this.inFlight = true;
     const requestId = createRequestId();
     const seq = this.nextSeq();
     const commandCode = this.config.commandCodes[request.command];
-    const taskNo = request.task?.taskNo ?? null;
 
     try {
-      if (request.command === "dispatchTask" && request.task) {
-        await this.transport.writeTaskPayload(request.task);
-      }
-
       const lastCommand = await this.transport.sendCommand({
         command: request.command,
         requestId,
         seq,
         commandCode,
-        taskNo,
+        payload: request.payload,
       });
 
       this.lastCommand = lastCommand;
@@ -88,16 +82,23 @@ export class PlcGateway {
       const gatewayError = error instanceof GatewayHttpError
         ? error
         : new GatewayHttpError(
-            error instanceof Error ? error.message : "PLC 网关内部错误",
+            error instanceof Error ? error.message : "PLC gateway internal error",
             500,
             "gateway_error",
             "transport_error",
           );
 
-      this.lastCommand = createLastCommand(request.command, requestId, taskNo, gatewayError.result, {
-        errorCode: gatewayError.code,
-        errorMessage: gatewayError.message,
-      });
+      this.lastCommand = createLastCommand(
+        request.command,
+        requestId,
+        request.payload?.taskNo ?? null,
+        gatewayError.result,
+        {
+          stepId: request.payload?.stepId ?? null,
+          errorCode: gatewayError.code,
+          errorMessage: gatewayError.message,
+        },
+      );
 
       throw gatewayError;
     } finally {
@@ -113,37 +114,30 @@ export class PlcGateway {
   private assertCommandAllowed(
     command: PlcCommand,
     machineState: PlcMachineState,
-    currentTaskNo: string | null,
     alarm: boolean,
-    requestedTaskNo: string | null,
+    stepBusy: boolean,
   ) {
-    if (command === "dispatchTask") {
-      if (!(machineState === "idle" || machineState === "unknown")) {
-        throw new GatewayHttpError("当前设备状态不允许下发任务", 409, "invalid_machine_state", "rejected");
-      }
+    if (command === "resetAlarm") {
       return;
     }
 
-    if (command === "start") {
-      if (alarm || machineState === "alarm") {
-        throw new GatewayHttpError("设备处于告警状态，不能开始", 409, "machine_alarm", "rejected");
-      }
-      if (requestedTaskNo && currentTaskNo !== requestedTaskNo) {
-        throw new GatewayHttpError("当前 PLC 任务与页面选中任务不一致", 409, "task_mismatch", "rejected");
+    if (alarm || machineState === "alarm") {
+      throw new GatewayHttpError("PLC is in alarm state", 409, "machine_alarm", "alarm");
+    }
+
+    if (command === "pickToBin" || command === "releaseBin" || command === "home") {
+      if (stepBusy || machineState === "running" || machineState === "paused") {
+        throw new GatewayHttpError("PLC is busy", 409, "plc_busy", "busy");
       }
       return;
     }
 
     if (command === "pause" && machineState !== "running") {
-      throw new GatewayHttpError("只有运行中才能暂停", 409, "invalid_machine_state", "rejected");
+      throw new GatewayHttpError("Pause requires running state", 409, "invalid_machine_state", "rejected");
     }
 
     if (command === "resume" && machineState !== "paused") {
-      throw new GatewayHttpError("只有暂停时才能继续", 409, "invalid_machine_state", "rejected");
-    }
-
-    if (command === "reset" && machineState === "unknown") {
-      throw new GatewayHttpError("当前连接状态未知，不能执行复位", 409, "invalid_machine_state", "rejected");
+      throw new GatewayHttpError("Resume requires paused state", 409, "invalid_machine_state", "rejected");
     }
   }
 }

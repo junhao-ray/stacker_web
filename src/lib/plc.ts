@@ -1,16 +1,34 @@
 import type {
-  DispatchTaskPayload,
-  DispatchTaskStep,
   PlcCommand,
   PlcCommandRequest,
+  PlcPickToBinPayload,
   PlcStatusSnapshot,
+  TwinPickStep,
   TwinQueueTask,
 } from "@/lib/types";
 
-export const PLC_MAX_TASK_STEPS = 256;
 export const PLC_MAX_STRING_LENGTH = 64;
+export const PLC_COMMANDS: PlcCommand[] = [
+  "pickToBin",
+  "releaseBin",
+  "pause",
+  "resume",
+  "home",
+  "resetAlarm",
+];
 
-export const PLC_COMMANDS: PlcCommand[] = ["dispatchTask", "start", "pause", "resume", "reset"];
+export const PLC_TEMP_PICK_COORDINATES = [
+  { x: 0, y: 0 },
+  { x: 133, y: 111 },
+  { x: 267, y: 222 },
+  { x: 400, y: 333 },
+  { x: 533, y: 444 },
+  { x: 667, y: 556 },
+  { x: 800, y: 667 },
+  { x: 933, y: 778 },
+  { x: 1067, y: 889 },
+  { x: 1200, y: 1000 },
+] as const;
 
 export class PlcRequestValidationError extends Error {
   status: number;
@@ -30,123 +48,106 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown, label: string, maxLength = PLC_MAX_STRING_LENGTH) {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new PlcRequestValidationError(`${label} 不能为空`);
+    throw new PlcRequestValidationError(`${label} is required`);
   }
 
   const normalized = value.trim();
   if (normalized.length > maxLength) {
-    throw new PlcRequestValidationError(`${label} 长度不能超过 ${maxLength}`);
+    throw new PlcRequestValidationError(`${label} must be ${maxLength} characters or fewer`);
   }
 
   return normalized;
 }
 
+function isFiniteNumber(value: unknown, label: string) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new PlcRequestValidationError(`${label} must be a finite number`);
+  }
+
+  return value;
+}
+
 function isPositiveInteger(value: unknown, label: string) {
   if (!Number.isInteger(value) || Number(value) <= 0) {
-    throw new PlcRequestValidationError(`${label} 必须为正整数`);
+    throw new PlcRequestValidationError(`${label} must be a positive integer`);
   }
 
   return Number(value);
 }
 
-function isTaskStep(value: unknown, position: number): DispatchTaskStep {
-  if (!isObject(value)) {
-    throw new PlcRequestValidationError(`steps[${position}] 必须为对象`);
+function isTargetSide(value: unknown) {
+  const side = isPositiveInteger(value, "payload.targetSide");
+  if (side !== 1 && side !== 2) {
+    throw new PlcRequestValidationError("payload.targetSide must be 1 or 2");
   }
-
-  const side = value.side;
-  if (side !== "left" && side !== "right") {
-    throw new PlcRequestValidationError(`steps[${position}].side 必须为 left 或 right`);
-  }
-
-  return {
-    index: isPositiveInteger(value.index, `steps[${position}].index`),
-    productCode: isNonEmptyString(value.productCode, `steps[${position}].productCode`),
-    quantity: isPositiveInteger(value.quantity, `steps[${position}].quantity`),
-    side,
-    column: isPositiveInteger(value.column, `steps[${position}].column`),
-    level: isPositiveInteger(value.level, `steps[${position}].level`),
-    slotId: isNonEmptyString(value.slotId, `steps[${position}].slotId`),
-  };
+  return side;
 }
 
-function isDispatchTask(value: unknown): DispatchTaskPayload {
+function isPickToBinPayload(value: unknown): PlcPickToBinPayload {
   if (!isObject(value)) {
-    throw new PlcRequestValidationError("task 必须为对象");
-  }
-
-  if (!Array.isArray(value.steps)) {
-    throw new PlcRequestValidationError("task.steps 必须为数组");
-  }
-
-  if (value.steps.length === 0) {
-    throw new PlcRequestValidationError("task.steps 不能为空");
-  }
-
-  if (value.steps.length > PLC_MAX_TASK_STEPS) {
-    throw new PlcRequestValidationError(`task.steps 不能超过 ${PLC_MAX_TASK_STEPS} 条`, 400, "task_steps_exceeded");
-  }
-
-  const steps = value.steps.map((step, index) => isTaskStep(step, index));
-  const stepCount = isPositiveInteger(value.stepCount, "task.stepCount");
-
-  if (stepCount !== steps.length) {
-    throw new PlcRequestValidationError("task.stepCount 必须与 steps.length 一致");
+    throw new PlcRequestValidationError("payload is required for pickToBin");
   }
 
   return {
-    taskNo: isNonEmptyString(value.taskNo, "task.taskNo"),
-    orderNo: isNonEmptyString(value.orderNo, "task.orderNo"),
-    stepCount,
-    steps,
+    taskNo: isNonEmptyString(value.taskNo, "payload.taskNo"),
+    orderNo: isNonEmptyString(value.orderNo, "payload.orderNo"),
+    stepId: isNonEmptyString(value.stepId, "payload.stepId"),
+    productCode: isNonEmptyString(value.productCode, "payload.productCode"),
+    slotId: isNonEmptyString(value.slotId, "payload.slotId"),
+    targetX: isFiniteNumber(value.targetX, "payload.targetX"),
+    targetY: isFiniteNumber(value.targetY, "payload.targetY"),
+    targetSide: isTargetSide(value.targetSide),
+    targetQty: isPositiveInteger(value.targetQty, "payload.targetQty"),
   };
 }
 
 export function parsePlcCommandRequest(body: unknown): PlcCommandRequest {
   if (!isObject(body)) {
-    throw new PlcRequestValidationError("请求体必须为 JSON 对象");
+    throw new PlcRequestValidationError("Request body must be a JSON object");
   }
 
   const commandValue = body.command;
   if (typeof commandValue !== "string" || !PLC_COMMANDS.includes(commandValue as PlcCommand)) {
-    throw new PlcRequestValidationError("command 不合法");
+    throw new PlcRequestValidationError("command is invalid");
   }
   const command = commandValue as PlcCommand;
 
-  if (command === "dispatchTask") {
+  if (command === "pickToBin") {
     return {
       command,
-      task: isDispatchTask(body.task),
+      payload: isPickToBinPayload(body.payload),
     };
   }
 
-  if (typeof body.task !== "undefined") {
-    throw new PlcRequestValidationError(`${command} 命令不能携带 task`);
+  if (typeof body.payload !== "undefined") {
+    throw new PlcRequestValidationError(`${command} cannot include payload`);
   }
 
   return { command };
 }
 
-export function buildDispatchTaskPayload(task: TwinQueueTask): DispatchTaskPayload {
-  const steps = task.steps.map<DispatchTaskStep>((step, index) => ({
-    index: index + 1,
-    productCode: step.productCode,
-    quantity: 1,
-    side: step.side,
-    column: step.column,
-    level: step.level,
-    slotId: step.slotId,
-  }));
+export function getTemporaryPickCoordinate(stepIndex: number) {
+  const safeIndex = Number.isInteger(stepIndex) && stepIndex >= 0 ? stepIndex : 0;
+  return PLC_TEMP_PICK_COORDINATES[safeIndex % PLC_TEMP_PICK_COORDINATES.length];
+}
 
-  if (steps.length > PLC_MAX_TASK_STEPS) {
-    throw new PlcRequestValidationError(`任务 ${task.taskNo} 超过最大步骤数 ${PLC_MAX_TASK_STEPS}`, 400, "task_steps_exceeded");
-  }
+export function buildPickToBinPayload(
+  task: TwinQueueTask,
+  step: TwinPickStep,
+  stepIndex: number,
+): PlcPickToBinPayload {
+  const coordinate = getTemporaryPickCoordinate(stepIndex);
 
   return {
     taskNo: task.taskNo,
     orderNo: task.orderNo,
-    stepCount: steps.length,
-    steps,
+    stepId: step.id,
+    productCode: step.productCode,
+    slotId: step.slotId,
+    targetX: coordinate.x,
+    targetY: coordinate.y,
+    targetSide: step.side === "left" ? 1 : 2,
+    targetQty: 1,
   };
 }
 
@@ -156,6 +157,15 @@ export function emptyPlcStatusSnapshot(): PlcStatusSnapshot {
     connected: false,
     machineState: "unknown",
     currentTaskNo: null,
+    currentSeq: null,
+    currentStepId: null,
+    stepBusy: false,
+    stepDone: false,
+    actualX: null,
+    actualY: null,
+    alarm: false,
+    errorCode: null,
+    errorMessage: null,
     commandInFlight: false,
     lastCommand: null,
     updatedAt: new Date(0).toISOString(),

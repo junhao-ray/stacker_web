@@ -1,29 +1,31 @@
-// ─── 包装规格 ─────────────────────────────────────────────────────────────────
+// ─── 库存类型 / 外形尺寸 ─────────────────────────────────────────────────────
 
 export interface SeedSpec {
   id: number;
-  /** 薄度 (cm) */
+  /** 库存类型名称 */
+  name: string;
+  /** 薄度（保留字段） */
   thinness: string;
-  /** 厚度 (cm) */
+  /** 厚度（保留字段） */
   thickness: number;
-  /** 宽度 (cm) */
+  /** 宽度 (mm) */
   width: number;
-  /** 长度 (cm) */
+  /** 高度 (mm) */
   length: number;
   /** 包装类型：罐装 | 袋装 */
   packType: "罐装" | "袋装";
 }
 
-// ─── 种子品种 ─────────────────────────────────────────────────────────────────
+// ─── 库存记录 ─────────────────────────────────────────────────────────────────
 
 export interface SeedProduct {
-  /** 种子编码 */
+  /** 库存编码 */
   code: string;
-  /** 品种名称 */
+  /** 库存类型名称 */
   name: string;
-  /** 种子类型 */
+  /** 库存分类 */
   category: string;
-  /** 关联规格 ID (1-16) */
+  /** 关联库存类型 ID */
   specId: number;
   /** 当前库存 */
   stock: number;
@@ -38,11 +40,11 @@ export interface SeedProduct {
 export type OutboundStatus = "pending" | "picking" | "completed" | "cancelled";
 
 export interface OutboundItem {
-  /** 种子编码 */
+  /** 库存编码 */
   productCode: string;
-  /** 品种名称 */
+  /** 库存类型名称 */
   productName: string;
-  /** 规格 ID */
+  /** 库存类型 ID */
   specId: number;
   /** 数量 */
   quantity: number;
@@ -53,7 +55,7 @@ export interface OutboundTask {
   taskNo: string;
   /** 关联订单号 */
   orderNo: string;
-  /** 出库种子明细 */
+  /** 出库库存明细 */
   items: OutboundItem[];
   /** 任务状态 */
   status: OutboundStatus;
@@ -68,7 +70,7 @@ export interface OutboundTask {
 // ─── 仪表盘统计 ───────────────────────────────────────────────────────────────
 
 export interface WarehouseStats {
-  /** 种子品种总数 */
+  /** 库存类型总数 */
   totalProducts: number;
   /** 库存总量（袋/罐） */
   totalStock: number;
@@ -76,7 +78,7 @@ export interface WarehouseStats {
   pendingTasks: number;
   /** 今日已出库数 */
   todayCompleted: number;
-  /** 包装规格数 */
+  /** 库存类型数 */
   specCount: number;
   /** 低库存预警数 */
   lowStockCount: number;
@@ -112,6 +114,43 @@ export interface TwinConfig {
   rackLevels: number;
   columnPitchMeters: number;
   levelHeightMeters: number;
+  rackLengthMm: number;
+  rackHeightMm: number;
+  defaultGapMm: number;
+}
+
+export interface TwinRackLevelItemConfig {
+  id: string;
+  specId: number;
+  quantity: number;
+  gapAfterMm?: number;
+}
+
+export interface TwinRackLevelConfig {
+  level: number;
+  items: TwinRackLevelItemConfig[];
+}
+
+export interface TwinRackSideConfig {
+  side: TwinSide;
+  levels: TwinRackLevelConfig[];
+}
+
+export interface TwinRackConfig {
+  rackLengthMm: number;
+  rackHeightMm: number;
+  rackLevels: number;
+  defaultGapMm: number;
+  sides: TwinRackSideConfig[];
+}
+
+export interface TwinRackLevelLayout {
+  side: TwinSide;
+  level: number;
+  slotCount: number;
+  usedLengthMm: number;
+  remainingLengthMm: number;
+  overflowMm: number;
 }
 
 export interface TwinRackSlot {
@@ -119,6 +158,10 @@ export interface TwinRackSlot {
   side: TwinSide;
   column: number;
   level: number;
+  specId: number;
+  xStartMm: number;
+  widthMm: number;
+  xCenterMm: number;
   productCode: string;
   productName: string;
   stockQty: number;
@@ -197,44 +240,44 @@ export type PlcMode = "simulation" | "plc";
 
 export type PlcMachineState = "idle" | "running" | "paused" | "alarm" | "unknown";
 
-export type PlcCommand = "dispatchTask" | "start" | "pause" | "resume" | "reset";
+export type PlcCommand = "pickToBin" | "releaseBin" | "pause" | "resume" | "home" | "resetAlarm";
 
 export type PlcCommandResult =
   | "ok"
+  | "busy"
+  | "alarm"
+  | "invalid_target"
   | "rejected"
   | "timeout"
   | "transport_error";
 
-export interface DispatchTaskStep {
-  index: number;
-  productCode: string;
-  quantity: number;
-  side: TwinSide;
-  column: number;
-  level: number;
-  slotId: string;
-}
-
-export interface DispatchTaskPayload {
+export interface PlcPickToBinPayload {
   taskNo: string;
   orderNo: string;
-  stepCount: number;
-  steps: DispatchTaskStep[];
+  stepId: string;
+  productCode: string;
+  slotId: string;
+  targetX: number;
+  targetY: number;
+  targetSide: number;
+  targetQty: number;
 }
 
 export interface PlcCommandRequest {
   command: PlcCommand;
-  task?: DispatchTaskPayload;
+  payload?: PlcPickToBinPayload;
 }
 
 export interface PlcLastCommand {
   command: PlcCommand;
   taskNo: string | null;
+  stepId?: string | null;
   result: PlcCommandResult;
   requestId: string;
   errorCode?: string;
   errorMessage?: string;
   acknowledgedAt?: string;
+  completedAt?: string;
 }
 
 export interface PlcStatusSnapshot {
@@ -242,6 +285,15 @@ export interface PlcStatusSnapshot {
   connected: boolean;
   machineState: PlcMachineState;
   currentTaskNo: string | null;
+  currentSeq: number | null;
+  currentStepId: string | null;
+  stepBusy: boolean;
+  stepDone: boolean;
+  actualX: number | null;
+  actualY: number | null;
+  alarm: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
   commandInFlight: boolean;
   lastCommand: PlcLastCommand | null;
   updatedAt: string;

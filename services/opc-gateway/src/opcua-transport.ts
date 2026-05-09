@@ -13,7 +13,7 @@ import {
   StatusCodes,
 } from "node-opcua";
 
-import type { DispatchTaskPayload, PlcLastCommand, PlcMachineState } from "@/lib/types";
+import type { PlcCommandResult, PlcLastCommand, PlcMachineState } from "@/lib/types";
 
 import { GatewayHttpError } from "./errors";
 import type {
@@ -47,6 +47,22 @@ function normalizeMachineState(raw: unknown): PlcMachineState {
   return "unknown";
 }
 
+function normalizeAckResult(raw: unknown): PlcCommandResult | string {
+  const value = String(raw ?? "").toLowerCase();
+  if (
+    value === "ok" ||
+    value === "busy" ||
+    value === "alarm" ||
+    value === "invalid_target" ||
+    value === "rejected" ||
+    value === "timeout" ||
+    value === "transport_error"
+  ) {
+    return value;
+  }
+  return value || "rejected";
+}
+
 function extractScalar(dataValue: DataValue) {
   return dataValue.value.value;
 }
@@ -64,7 +80,7 @@ async function writeNode(session: ClientSession, nodeId: string, dataType: DataT
   });
 
   if (statusCode !== StatusCodes.Good) {
-    throw new GatewayHttpError(`写入 OPC 节点失败: ${nodeId}`, 502, "opc_write_failed", "transport_error");
+    throw new GatewayHttpError(`Failed to write OPC node: ${nodeId}`, 502, "opc_write_failed", "transport_error");
   }
 }
 
@@ -72,6 +88,12 @@ function createSnapshot(): PlcRuntimeSnapshot {
   return {
     machineState: "unknown",
     currentTaskNo: null,
+    currentSeq: null,
+    currentStepId: null,
+    stepBusy: false,
+    stepDone: false,
+    actualX: null,
+    actualY: null,
     alarm: false,
     errorCode: null,
     errorMessage: null,
@@ -79,6 +101,10 @@ function createSnapshot(): PlcRuntimeSnapshot {
     ackCode: null,
     ackResult: null,
   };
+}
+
+function commandWaitsForDone(command: GatewayCommandContext["command"]) {
+  return command === "pickToBin" || command === "releaseBin" || command === "home";
 }
 
 export class OpcUaPlcTransport implements PlcTransport {
@@ -137,43 +163,23 @@ export class OpcUaPlcTransport implements PlcTransport {
     };
   }
 
-  async writeTaskPayload(task: DispatchTaskPayload) {
-    const session = this.requireSession();
-    const stepNodes = this.config.nodes.task.steps;
-
-    if (task.steps.length > stepNodes.length) {
-      throw new GatewayHttpError(
-        `任务步骤数量 ${task.steps.length} 超出点位模板容量 ${stepNodes.length}`,
-        409,
-        "task_capacity_exceeded",
-        "rejected",
-      );
-    }
-
-    await Promise.all([
-      writeNode(session, this.config.nodes.task.header.taskNo, DataType.String, task.taskNo),
-      writeNode(session, this.config.nodes.task.header.orderNo, DataType.String, task.orderNo),
-      writeNode(session, this.config.nodes.task.header.stepCount, DataType.UInt32, task.stepCount),
-    ]);
-
-    for (let index = 0; index < stepNodes.length; index += 1) {
-      const mapping = stepNodes[index];
-      const step = task.steps[index];
-
-      await Promise.all([
-        writeNode(session, mapping.index, DataType.UInt32, step?.index ?? 0),
-        writeNode(session, mapping.productCode, DataType.String, step?.productCode ?? ""),
-        writeNode(session, mapping.quantity, DataType.UInt32, step?.quantity ?? 0),
-        writeNode(session, mapping.side, DataType.UInt32, step ? this.config.sideMapping[step.side] : 0),
-        writeNode(session, mapping.column, DataType.UInt32, step?.column ?? 0),
-        writeNode(session, mapping.level, DataType.UInt32, step?.level ?? 0),
-        writeNode(session, mapping.slotId, DataType.String, step?.slotId ?? ""),
-      ]);
-    }
-  }
-
   async sendCommand(context: GatewayCommandContext): Promise<PlcLastCommand> {
     const session = this.requireSession();
+
+    if (context.payload) {
+      this.snapshot.currentTaskNo = context.payload.taskNo;
+      await Promise.all([
+        writeNode(session, this.config.nodes.target.x, DataType.Double, context.payload.targetX),
+        writeNode(session, this.config.nodes.target.y, DataType.Double, context.payload.targetY),
+        writeNode(session, this.config.nodes.target.side, DataType.UInt32, context.payload.targetSide),
+        writeNode(session, this.config.nodes.target.qty, DataType.UInt32, context.payload.targetQty),
+        writeNode(session, this.config.nodes.trace.taskNo, DataType.String, context.payload.taskNo),
+        writeNode(session, this.config.nodes.trace.orderNo, DataType.String, context.payload.orderNo),
+        writeNode(session, this.config.nodes.trace.stepId, DataType.String, context.payload.stepId),
+        writeNode(session, this.config.nodes.trace.productCode, DataType.String, context.payload.productCode),
+        writeNode(session, this.config.nodes.trace.slotId, DataType.String, context.payload.slotId),
+      ]);
+    }
 
     await writeNode(session, this.config.nodes.command.code, DataType.UInt32, context.commandCode);
     await writeNode(session, this.config.nodes.command.seq, DataType.UInt32, context.seq);
@@ -181,7 +187,20 @@ export class OpcUaPlcTransport implements PlcTransport {
     await new Promise((resolve) => setTimeout(resolve, this.config.pulseDurationMs));
     await writeNode(session, this.config.nodes.command.trigger, DataType.Boolean, false);
 
-    return await this.waitForAck(context);
+    const acknowledgedAt = await this.waitForAck(context);
+    const completedAt = commandWaitsForDone(context.command)
+      ? await this.waitForStepDone(context)
+      : undefined;
+
+    return {
+      command: context.command,
+      taskNo: context.payload?.taskNo ?? this.snapshot.currentTaskNo,
+      stepId: context.payload?.stepId ?? this.snapshot.currentStepId,
+      result: "ok",
+      requestId: context.requestId,
+      acknowledgedAt,
+      completedAt,
+    };
   }
 
   private async connect() {
@@ -243,11 +262,16 @@ export class OpcUaPlcTransport implements PlcTransport {
     if (!subscription) return;
 
     const nodes = [
-      this.config.nodes.ack.lastAckSeq,
-      this.config.nodes.ack.lastAckCode,
-      this.config.nodes.ack.lastAckResult,
+      this.config.nodes.ack.seq,
+      this.config.nodes.ack.code,
+      this.config.nodes.ack.result,
       this.config.nodes.machine.state,
-      this.config.nodes.machine.currentTaskNo,
+      this.config.nodes.machine.stepBusy,
+      this.config.nodes.machine.stepDone,
+      this.config.nodes.machine.currentSeq,
+      this.config.nodes.machine.currentStepId,
+      this.config.nodes.machine.actualX,
+      this.config.nodes.machine.actualY,
       this.config.nodes.machine.alarm,
       this.config.nodes.machine.errorCode,
       this.config.nodes.machine.errorMessage,
@@ -273,29 +297,40 @@ export class OpcUaPlcTransport implements PlcTransport {
   private async refreshSnapshot() {
     const session = this.requireSession();
     const reads = await Promise.all([
-      session.read({ nodeId: toNodeId(this.config.nodes.ack.lastAckSeq), attributeId: AttributeIds.Value }),
-      session.read({ nodeId: toNodeId(this.config.nodes.ack.lastAckCode), attributeId: AttributeIds.Value }),
-      session.read({ nodeId: toNodeId(this.config.nodes.ack.lastAckResult), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.ack.seq), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.ack.code), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.ack.result), attributeId: AttributeIds.Value }),
       session.read({ nodeId: toNodeId(this.config.nodes.machine.state), attributeId: AttributeIds.Value }),
-      session.read({ nodeId: toNodeId(this.config.nodes.machine.currentTaskNo), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.machine.stepBusy), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.machine.stepDone), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.machine.currentSeq), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.machine.currentStepId), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.machine.actualX), attributeId: AttributeIds.Value }),
+      session.read({ nodeId: toNodeId(this.config.nodes.machine.actualY), attributeId: AttributeIds.Value }),
       session.read({ nodeId: toNodeId(this.config.nodes.machine.alarm), attributeId: AttributeIds.Value }),
       session.read({ nodeId: toNodeId(this.config.nodes.machine.errorCode), attributeId: AttributeIds.Value }),
       session.read({ nodeId: toNodeId(this.config.nodes.machine.errorMessage), attributeId: AttributeIds.Value }),
     ]);
 
     this.snapshot = {
+      currentTaskNo: this.snapshot.currentTaskNo,
       ackSeq: Number(extractScalar(reads[0])) || 0,
       ackCode: Number(extractScalar(reads[1])) || 0,
-      ackResult: String(extractScalar(reads[2]) ?? ""),
+      ackResult: normalizeAckResult(extractScalar(reads[2])),
       machineState: normalizeMachineState(extractScalar(reads[3])),
-      currentTaskNo: String(extractScalar(reads[4]) ?? "") || null,
-      alarm: Boolean(extractScalar(reads[5])),
-      errorCode: String(extractScalar(reads[6]) ?? "") || null,
-      errorMessage: String(extractScalar(reads[7]) ?? "") || null,
+      stepBusy: Boolean(extractScalar(reads[4])),
+      stepDone: Boolean(extractScalar(reads[5])),
+      currentSeq: Number(extractScalar(reads[6])) || 0,
+      currentStepId: String(extractScalar(reads[7]) ?? "") || null,
+      actualX: Number(extractScalar(reads[8])),
+      actualY: Number(extractScalar(reads[9])),
+      alarm: Boolean(extractScalar(reads[10])),
+      errorCode: String(extractScalar(reads[11]) ?? "") || null,
+      errorMessage: String(extractScalar(reads[12]) ?? "") || null,
     };
   }
 
-  private async waitForAck(context: GatewayCommandContext): Promise<PlcLastCommand> {
+  private async waitForAck(context: GatewayCommandContext): Promise<string> {
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < this.config.ackTimeoutMs) {
@@ -303,32 +338,52 @@ export class OpcUaPlcTransport implements PlcTransport {
 
       if (this.snapshot.ackSeq === context.seq) {
         if (String(this.snapshot.ackResult).toLowerCase() === "ok") {
-          return {
-            command: context.command,
-            taskNo: context.taskNo,
-            result: "ok",
-            requestId: context.requestId,
-            acknowledgedAt: new Date().toISOString(),
-          };
+          return new Date().toISOString();
         }
 
+        const result = normalizeAckResult(this.snapshot.ackResult);
         throw new GatewayHttpError(
-          this.snapshot.errorMessage ?? "PLC 拒绝了命令",
-          502,
-          "plc_rejected",
-          "rejected",
+          this.snapshot.errorMessage ?? `PLC rejected command with ${result}`,
+          result === "busy" ? 409 : 502,
+          result === "invalid_target" ? "invalid_target" : "plc_rejected",
+          result === "ok" ? "rejected" : (result as PlcCommandResult),
         );
       }
 
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
-    throw new GatewayHttpError("等待 PLC ACK 超时", 504, "ack_timeout", "timeout");
+    throw new GatewayHttpError("Timed out waiting for PLC ACK", 504, "ack_timeout", "timeout");
+  }
+
+  private async waitForStepDone(context: GatewayCommandContext): Promise<string> {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < this.config.stepDoneTimeoutMs) {
+      await this.refreshSnapshot();
+
+      if (this.snapshot.alarm || this.snapshot.machineState === "alarm") {
+        throw new GatewayHttpError(
+          this.snapshot.errorMessage ?? "PLC entered alarm state",
+          502,
+          this.snapshot.errorCode ?? "plc_alarm",
+          "alarm",
+        );
+      }
+
+      if (this.snapshot.stepDone && this.snapshot.currentSeq === context.seq) {
+        return new Date().toISOString();
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    throw new GatewayHttpError("Timed out waiting for PLC step completion", 504, "step_done_timeout", "timeout");
   }
 
   private requireSession() {
     if (!this.session || !this.connected) {
-      throw new GatewayHttpError("OPC UA 会话未连接", 503, "opc_disconnected", "transport_error");
+      throw new GatewayHttpError("OPC UA session is disconnected", 503, "opc_disconnected", "transport_error");
     }
 
     return this.session;

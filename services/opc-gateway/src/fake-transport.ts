@@ -1,4 +1,4 @@
-import type { DispatchTaskPayload, PlcCommand, PlcLastCommand } from "@/lib/types";
+import type { PlcCommand, PlcLastCommand } from "@/lib/types";
 
 import type {
   GatewayCommandContext,
@@ -11,12 +11,16 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-export class FakePlcTransport implements PlcTransport {
-  private connected = true;
-  private configured = true;
-  private snapshot: PlcRuntimeSnapshot = {
+function createSnapshot(): PlcRuntimeSnapshot {
+  return {
     machineState: "idle",
     currentTaskNo: null,
+    currentSeq: null,
+    currentStepId: null,
+    stepBusy: false,
+    stepDone: false,
+    actualX: 0,
+    actualY: 0,
     alarm: false,
     errorCode: null,
     errorMessage: null,
@@ -24,6 +28,12 @@ export class FakePlcTransport implements PlcTransport {
     ackCode: 0,
     ackResult: "ok",
   };
+}
+
+export class FakePlcTransport implements PlcTransport {
+  private connected = true;
+  private configured = true;
+  private snapshot: PlcRuntimeSnapshot = createSnapshot();
 
   async start() {
     return;
@@ -41,35 +51,43 @@ export class FakePlcTransport implements PlcTransport {
     };
   }
 
-  async writeTaskPayload(task: DispatchTaskPayload) {
-    this.snapshot.currentTaskNo = task.taskNo;
-  }
-
   async sendCommand(context: GatewayCommandContext): Promise<PlcLastCommand> {
     this.snapshot.ackSeq = context.seq;
     this.snapshot.ackCode = context.commandCode;
     this.snapshot.ackResult = "ok";
 
-    this.transitionState(context.command, context.taskNo);
+    const acknowledgedAt = nowIso();
+    this.transitionState(context.command, context);
 
     return {
       command: context.command,
-      taskNo: context.taskNo,
+      taskNo: context.payload?.taskNo ?? this.snapshot.currentTaskNo,
+      stepId: context.payload?.stepId ?? this.snapshot.currentStepId,
       result: "ok",
       requestId: context.requestId,
-      acknowledgedAt: nowIso(),
+      acknowledgedAt,
+      completedAt: nowIso(),
     };
   }
 
-  private transitionState(command: PlcCommand, taskNo: string | null) {
-    if (command === "dispatchTask") {
-      this.snapshot.currentTaskNo = taskNo;
+  private transitionState(command: PlcCommand, context: GatewayCommandContext) {
+    if (command === "pickToBin" && context.payload) {
+      this.snapshot.currentTaskNo = context.payload.taskNo;
+      this.snapshot.currentSeq = context.seq;
+      this.snapshot.currentStepId = context.payload.stepId;
+      this.snapshot.actualX = context.payload.targetX;
+      this.snapshot.actualY = context.payload.targetY;
       this.snapshot.machineState = "idle";
+      this.snapshot.stepBusy = false;
+      this.snapshot.stepDone = true;
       return;
     }
 
-    if (command === "start") {
-      this.snapshot.machineState = "running";
+    if (command === "releaseBin" || command === "home") {
+      this.snapshot.currentSeq = context.seq;
+      this.snapshot.machineState = "idle";
+      this.snapshot.stepBusy = false;
+      this.snapshot.stepDone = true;
       return;
     }
 
@@ -83,11 +101,8 @@ export class FakePlcTransport implements PlcTransport {
       return;
     }
 
-    if (command === "reset") {
-      this.snapshot.machineState = "idle";
-      this.snapshot.alarm = false;
-      this.snapshot.errorCode = null;
-      this.snapshot.errorMessage = null;
+    if (command === "resetAlarm") {
+      this.snapshot = createSnapshot();
     }
   }
 }

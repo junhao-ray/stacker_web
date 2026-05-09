@@ -1,4 +1,11 @@
 import { OUTBOUND_TASKS, SEED_PRODUCTS } from "./mock-data";
+import {
+  applyRackSlotIdentity,
+  cloneRackConfig,
+  createDefaultRackConfig,
+  expandRackLevelItems,
+  toTwinConfig,
+} from "./rack-config";
 import type {
   OutboundTask,
   TwinConfig,
@@ -6,6 +13,7 @@ import type {
   TwinLogEntry,
   TwinPickStep,
   TwinQueueTask,
+  TwinRackConfig,
   TwinRackSlot,
   TwinRobotState,
   TwinSide,
@@ -13,62 +21,38 @@ import type {
   TwinTransferBinEntry,
 } from "./types";
 
-const TWIN_CONFIG: TwinConfig = {
-  xAxisMeters: 5,
-  zAxisMeters: 2,
-  rackColumns: 30,
-  rackLevels: 8,
-  columnPitchMeters: 5 / 30,
-  levelHeightMeters: 0.25,
-};
-
-const COLUMNS = Array.from({ length: TWIN_CONFIG.rackColumns }, (_, index) => index + 1);
-const LEVELS = Array.from({ length: TWIN_CONFIG.rackLevels }, (_, index) => index + 1);
+const DEFAULT_RACK_CONFIG = createDefaultRackConfig();
 const SIDES: TwinSide[] = ["left", "right"];
 
-function buildSlotProductPool() {
-  const productByCode = new Map(SEED_PRODUCTS.map((product) => [product.code, product]));
-  const taskProducts = OUTBOUND_TASKS.flatMap((task) => task.items)
-    .map((item) => productByCode.get(item.productCode))
-    .filter((product): product is typeof SEED_PRODUCTS[number] => Boolean(product));
-  const uniqueTaskProducts = Array.from(
-    new Map(taskProducts.map((product) => [product.code, product])).values(),
-  );
-  const fallbackProducts = SEED_PRODUCTS.filter(
-    (product) => !uniqueTaskProducts.some((entry) => entry.code === product.code),
-  );
-  const pool = [...uniqueTaskProducts, ...fallbackProducts];
-  const required = SIDES.length * TWIN_CONFIG.rackColumns * TWIN_CONFIG.rackLevels;
-
-  while (pool.length < required) {
-    pool.push(...SEED_PRODUCTS);
-  }
-
-  return pool.slice(0, required);
+function getRackConfig(rackConfig?: TwinRackConfig) {
+  return rackConfig ? cloneRackConfig(rackConfig) : cloneRackConfig(DEFAULT_RACK_CONFIG);
 }
 
-function buildRackSlots(): TwinRackSlot[] {
-  const products = buildSlotProductPool();
+function buildRackSlots(rackConfig?: TwinRackConfig): TwinRackSlot[] {
+  const config = getRackConfig(rackConfig);
   const slots: TwinRackSlot[] = [];
-  let productIndex = 0;
+  const productIndexBySpec = new Map<number, number>();
+  const fallbackProducts = SEED_PRODUCTS.length > 0 ? SEED_PRODUCTS : [{
+    code: "INV000",
+    name: "Seed bag",
+    category: "Seed",
+    specId: 1,
+    stock: 12,
+    location: "A-01-01",
+    status: "normal" as const,
+  }];
 
   for (const side of SIDES) {
-    for (const column of COLUMNS) {
-      for (const level of LEVELS) {
-        const product = products[productIndex++];
-        const stockQty = Math.max(product.stock, 12);
-        const status = stockQty === 0 ? "empty" : stockQty < 30 ? "low" : "ready";
+    for (let level = 1; level <= config.rackLevels; level += 1) {
+      const levelSlots = expandRackLevelItems(config, side, level);
 
-        slots.push({
-          id: `${side}-${String(column).padStart(2, "0")}-${String(level).padStart(2, "0")}`,
-          side,
-          column,
-          level,
-          productCode: product.code,
-          productName: product.name,
-          stockQty,
-          status,
-        });
+      for (const levelSlot of levelSlots) {
+        const candidates = SEED_PRODUCTS.filter((product) => product.specId === levelSlot.specId);
+        const productPool = candidates.length > 0 ? candidates : fallbackProducts;
+        const productIndex = productIndexBySpec.get(levelSlot.specId) ?? 0;
+        const product = productPool[productIndex % productPool.length];
+        productIndexBySpec.set(levelSlot.specId, productIndex + 1);
+        slots.push(applyRackSlotIdentity(levelSlot, product));
       }
     }
   }
@@ -76,21 +60,39 @@ function buildRackSlots(): TwinRackSlot[] {
   return slots;
 }
 
-const RACK_SLOTS = buildRackSlots();
-const SLOT_BY_PRODUCT = new Map<string, TwinRackSlot[]>();
+function buildSlotMap(slots: TwinRackSlot[]) {
+  const slotByProduct = new Map<string, TwinRackSlot[]>();
 
-for (const slot of RACK_SLOTS) {
-  const bucket = SLOT_BY_PRODUCT.get(slot.productCode) ?? [];
-  bucket.push(slot);
-  SLOT_BY_PRODUCT.set(slot.productCode, bucket);
+  for (const slot of slots) {
+    const bucket = slotByProduct.get(slot.productCode) ?? [];
+    bucket.push(slot);
+    slotByProduct.set(slot.productCode, bucket);
+  }
+
+  return slotByProduct;
 }
 
-function buildPickSteps(item: OutboundTask["items"][number], taskNo: string, index: number): TwinPickStep[] {
-  const matchingSlots = SLOT_BY_PRODUCT.get(item.productCode) ?? [];
-  const fallbackSlot = RACK_SLOTS[(index + taskNo.length) % RACK_SLOTS.length];
+function buildPickSteps(
+  item: OutboundTask["items"][number],
+  taskNo: string,
+  index: number,
+  slots: TwinRackSlot[],
+  slotByProduct: Map<string, TwinRackSlot[]>,
+): TwinPickStep[] {
+  const matchingSlots = slotByProduct.get(item.productCode) ?? [];
+  const specSlots = slots.filter((slot) => slot.specId === item.specId);
+  const fallbackSlot =
+    matchingSlots[0] ??
+    specSlots[0] ??
+    slots[(index + taskNo.length) % Math.max(1, slots.length)];
+
+  if (!fallbackSlot) return [];
+
   const preferredSlot =
     matchingSlots.find((slot) => slot.stockQty >= item.quantity) ??
     matchingSlots[0] ??
+    specSlots.find((slot) => slot.stockQty >= item.quantity) ??
+    specSlots[0] ??
     fallbackSlot;
 
   return Array.from({ length: item.quantity }, (_, packageIndex) => ({
@@ -107,8 +109,12 @@ function buildPickSteps(item: OutboundTask["items"][number], taskNo: string, ind
   }));
 }
 
-function toQueueTask(task: OutboundTask): TwinQueueTask {
-  const steps = task.items.flatMap((item, index) => buildPickSteps(item, task.taskNo, index));
+function toQueueTask(
+  task: OutboundTask,
+  slots: TwinRackSlot[],
+  slotByProduct: Map<string, TwinRackSlot[]>,
+): TwinQueueTask {
+  const steps = task.items.flatMap((item, index) => buildPickSteps(item, task.taskNo, index, slots, slotByProduct));
   const isCompleted = task.status === "completed";
 
   return {
@@ -127,25 +133,31 @@ function toQueueTask(task: OutboundTask): TwinQueueTask {
   };
 }
 
-const TWIN_QUEUE = OUTBOUND_TASKS.filter(
-  (task) => task.status === "pending" || task.status === "picking" || task.status === "completed",
-).map(toQueueTask);
+function buildTwinQueue(slots: TwinRackSlot[]) {
+  const slotByProduct = buildSlotMap(slots);
 
-function getDefaultActiveTask() {
-  return TWIN_QUEUE.find((task) => task.status === "picking") ??
-    TWIN_QUEUE.find((task) => task.status === "pending") ??
+  return OUTBOUND_TASKS.filter(
+    (task) => task.status === "pending" || task.status === "picking" || task.status === "completed",
+  ).map((task) => toQueueTask(task, slots, slotByProduct));
+}
+
+function getDefaultActiveTask(queue: TwinQueueTask[]) {
+  return queue.find((task) => task.status === "picking") ??
+    queue.find((task) => task.status === "pending") ??
     null;
 }
 
-function buildInitialRobot(activeTask: TwinQueueTask | null): TwinRobotState {
+function buildInitialRobot(activeTask: TwinQueueTask | null, slots: TwinRackSlot[]): TwinRobotState {
+  const firstSlot = slots[0];
+
   return {
-    xColumn: activeTask?.steps[0]?.column ?? 15,
-    zLevel: activeTask?.steps[0]?.level ?? 4,
-    facingSide: activeTask?.steps[0]?.side ?? "right",
+    xColumn: activeTask?.steps[0]?.column ?? firstSlot?.column ?? 1,
+    zLevel: activeTask?.steps[0]?.level ?? firstSlot?.level ?? 1,
+    facingSide: activeTask?.steps[0]?.side ?? firstSlot?.side ?? "right",
     phase: "idle",
     cylinderExtended: false,
     vacuumOn: false,
-    activeSlotId: activeTask?.steps[0]?.slotId ?? null,
+    activeSlotId: activeTask?.steps[0]?.slotId ?? firstSlot?.id ?? null,
     activeTaskNo: activeTask?.taskNo ?? null,
   };
 }
@@ -177,23 +189,24 @@ function sideLabel(side: TwinSide) {
   return side === "left" ? "上" : "下";
 }
 
-export function getTwinConfig() {
-  return TWIN_CONFIG;
+export function getTwinConfig(rackConfig?: TwinRackConfig): TwinConfig {
+  return toTwinConfig(getRackConfig(rackConfig));
 }
 
-export function getTwinRackSlots() {
-  return RACK_SLOTS.map((slot) => ({ ...slot }));
+export function getTwinRackSlots(rackConfig?: TwinRackConfig) {
+  return buildRackSlots(rackConfig).map((slot) => ({ ...slot }));
 }
 
-export function getTwinQueueData() {
-  return TWIN_QUEUE.map((task) => ({
+export function getTwinQueueData(rackConfig?: TwinRackConfig) {
+  const slots = buildRackSlots(rackConfig);
+  return buildTwinQueue(slots).map((task) => ({
     ...task,
     steps: task.steps.map((step) => ({ ...step })),
   }));
 }
 
-export function getTwinTaskData(taskNo: string) {
-  const task = TWIN_QUEUE.find((entry) => entry.taskNo === taskNo);
+export function getTwinTaskData(taskNo: string, rackConfig?: TwinRackConfig) {
+  const task = getTwinQueueData(rackConfig).find((entry) => entry.taskNo === taskNo);
   if (!task) return null;
 
   return {
@@ -202,24 +215,35 @@ export function getTwinTaskData(taskNo: string) {
   };
 }
 
-export function buildTwinSnapshot(): TwinSnapshot {
-  const activeTask = getDefaultActiveTask();
+export function buildTwinSnapshot(rackConfig?: TwinRackConfig): TwinSnapshot {
+  const config = getRackConfig(rackConfig);
+  const slots = getTwinRackSlots(config);
+  const queue = buildTwinQueue(slots);
+  const activeTask = getDefaultActiveTask(queue);
   const transferBin: TwinTransferBinEntry[] = [];
 
   return {
-    config: getTwinConfig(),
-    robot: buildInitialRobot(activeTask),
-    slots: getTwinRackSlots(),
-    queue: getTwinQueueData(),
-    activeTask: activeTask ? getTwinTaskData(activeTask.taskNo) : null,
+    config: getTwinConfig(config),
+    robot: buildInitialRobot(activeTask, slots),
+    slots: slots.map((slot) => ({ ...slot })),
+    queue: queue.map((task) => ({
+      ...task,
+      steps: task.steps.map((step) => ({ ...step })),
+    })),
+    activeTask: activeTask ? {
+      ...activeTask,
+      steps: activeTask.steps.map((step) => ({ ...step })),
+    } : null,
     transferBin,
     logs: buildInitialLogs(activeTask),
   };
 }
 
-export const mockTwinDataSource: TwinDataSource = {
-  async getTwinSnapshot() {
-    return buildTwinSnapshot();
+export const mockTwinDataSource: TwinDataSource & {
+  getTwinSnapshot(rackConfig?: TwinRackConfig): Promise<TwinSnapshot>;
+} = {
+  async getTwinSnapshot(rackConfig?: TwinRackConfig) {
+    return buildTwinSnapshot(rackConfig);
   },
   async getTwinQueue() {
     return getTwinQueueData();

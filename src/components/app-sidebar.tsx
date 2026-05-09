@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Radar,
   Warehouse,
+  Boxes,
 } from "lucide-react";
 
 import {
@@ -46,6 +47,11 @@ const NAV_ITEMS = [
     icon: Radar,
   },
   {
+    title: "货架配置",
+    href: "/rack-config",
+    icon: Boxes,
+  },
+  {
     title: "PLC配置",
     href: "/plc-config",
     icon: SlidersHorizontal,
@@ -56,7 +62,7 @@ const NAV_ITEMS = [
     icon: Package,
   },
   {
-    title: "规格管理",
+    title: "类型管理",
     href: "/specs",
     icon: Ruler,
   },

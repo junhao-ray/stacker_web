@@ -7,22 +7,13 @@ export type PlcSecurityPolicy =
   | "Basic256"
   | "Basic256Sha256";
 
-export interface PlcNodeStepFormValue {
-  index: string;
-  productCode: string;
-  quantity: string;
-  side: string;
-  column: string;
-  level: string;
-  slotId: string;
-}
-
 export interface PlcGatewayConfigFormValue {
   endpointUrl: string;
   securityMode: PlcSecurityMode;
   securityPolicy: PlcSecurityPolicy;
   requestedSessionTimeoutMs: number;
   ackTimeoutMs: number;
+  stepDoneTimeoutMs: number;
   reconnectIntervalMs: number;
   pulseDurationMs: number;
   pollIntervalMs: number;
@@ -33,29 +24,39 @@ export interface PlcGatewayConfigFormValue {
   commandCodes: Record<PlcCommand, number>;
   nodes: {
     command: {
-      code: string;
       seq: string;
+      code: string;
       trigger: string;
     };
+    target: {
+      x: string;
+      y: string;
+      side: string;
+      qty: string;
+    };
+    trace: {
+      taskNo: string;
+      orderNo: string;
+      stepId: string;
+      productCode: string;
+      slotId: string;
+    };
     ack: {
-      lastAckSeq: string;
-      lastAckCode: string;
-      lastAckResult: string;
+      seq: string;
+      code: string;
+      result: string;
     };
     machine: {
       state: string;
-      currentTaskNo: string;
+      stepBusy: string;
+      stepDone: string;
+      currentSeq: string;
+      currentStepId: string;
+      actualX: string;
+      actualY: string;
       alarm: string;
       errorCode: string;
       errorMessage: string;
-    };
-    task: {
-      header: {
-        taskNo: string;
-        orderNo: string;
-        stepCount: string;
-      };
-      steps: PlcNodeStepFormValue[];
     };
   };
 }
@@ -75,6 +76,7 @@ export function createDefaultPlcGatewayConfigFormValue(): PlcGatewayConfigFormVa
     securityPolicy: "None",
     requestedSessionTimeoutMs: 20000,
     ackTimeoutMs: 3000,
+    stepDoneTimeoutMs: 30000,
     reconnectIntervalMs: 2000,
     pulseDurationMs: 120,
     pollIntervalMs: 1000,
@@ -83,47 +85,48 @@ export function createDefaultPlcGatewayConfigFormValue(): PlcGatewayConfigFormVa
       right: 2,
     },
     commandCodes: {
-      dispatchTask: 10,
-      start: 20,
-      pause: 30,
-      resume: 40,
-      reset: 50,
+      pickToBin: 100,
+      releaseBin: 110,
+      pause: 120,
+      resume: 130,
+      home: 140,
+      resetAlarm: 150,
     },
     nodes: {
       command: {
-        code: "",
         seq: "",
+        code: "",
         trigger: "",
       },
+      target: {
+        x: "",
+        y: "",
+        side: "",
+        qty: "",
+      },
+      trace: {
+        taskNo: "",
+        orderNo: "",
+        stepId: "",
+        productCode: "",
+        slotId: "",
+      },
       ack: {
-        lastAckSeq: "",
-        lastAckCode: "",
-        lastAckResult: "",
+        seq: "",
+        code: "",
+        result: "",
       },
       machine: {
         state: "",
-        currentTaskNo: "",
+        stepBusy: "",
+        stepDone: "",
+        currentSeq: "",
+        currentStepId: "",
+        actualX: "",
+        actualY: "",
         alarm: "",
         errorCode: "",
         errorMessage: "",
-      },
-      task: {
-        header: {
-          taskNo: "",
-          orderNo: "",
-          stepCount: "",
-        },
-        steps: [
-          {
-            index: "",
-            productCode: "",
-            quantity: "",
-            side: "",
-            column: "",
-            level: "",
-            slotId: "",
-          },
-        ],
       },
     },
   };
@@ -136,12 +139,10 @@ export function clonePlcGatewayConfigFormValue(value: PlcGatewayConfigFormValue)
     commandCodes: { ...value.commandCodes },
     nodes: {
       command: { ...value.nodes.command },
+      target: { ...value.nodes.target },
+      trace: { ...value.nodes.trace },
       ack: { ...value.nodes.ack },
       machine: { ...value.nodes.machine },
-      task: {
-        header: { ...value.nodes.task.header },
-        steps: value.nodes.task.steps.map((step) => ({ ...step })),
-      },
     },
   };
 }

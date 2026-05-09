@@ -52,6 +52,8 @@ export default function SpecsPage() {
   const maxStock = Math.max(...dist.map((d) => d.stock));
   const totalStock = dist.reduce((s, d) => s + d.stock, 0);
   const totalVarieties = dist.reduce((s, d) => s + d.count, 0);
+  const maxWidth = Math.max(...SEED_SPECS.map((s) => s.width));
+  const maxHeight = Math.max(...SEED_SPECS.map((s) => s.length));
   const [selectedSpec, setSelectedSpec] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<"id" | "area" | "stock">("id");
 
@@ -69,9 +71,9 @@ export default function SpecsPage() {
     <div className="p-4 sm:p-6 space-y-8">
       {/* ── 页面标题区 ───────────────────────────────────────────── */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">规格管理</h1>
+        <h1 className="text-2xl font-bold tracking-tight">库存类型管理</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          管理 {SEED_SPECS.length} 种种子包装规格 · 总库存 {totalStock.toLocaleString()} 件 · 覆盖 {totalVarieties} 个品种
+          管理 {SEED_SPECS.length} 种库存类型 · 总库存 {totalStock.toLocaleString()} 件 · 覆盖 {totalVarieties} 个库存记录
         </p>
       </div>
 
@@ -85,7 +87,7 @@ export default function SpecsPage() {
             </div>
             <div>
               <p className="text-2xl font-bold tabular-nums">{SEED_SPECS.length}</p>
-              <p className="text-xs text-muted-foreground">包装规格</p>
+              <p className="text-xs text-muted-foreground">库存类型</p>
             </div>
           </CardContent>
         </Card>
@@ -109,7 +111,7 @@ export default function SpecsPage() {
             </div>
             <div>
               <p className="text-2xl font-bold tabular-nums">{totalVarieties}</p>
-              <p className="text-xs text-muted-foreground">品种数</p>
+              <p className="text-xs text-muted-foreground">库存记录</p>
             </div>
           </CardContent>
         </Card>
@@ -121,19 +123,19 @@ export default function SpecsPage() {
             </div>
             <div>
               <p className="text-2xl font-bold tabular-nums">
-                {SEED_SPECS.filter((s) => s.packType === "罐装").length} / {SEED_SPECS.filter((s) => s.packType === "袋装").length}
+                {maxWidth}×{maxHeight}
               </p>
-              <p className="text-xs text-muted-foreground">罐装 / 袋装</p>
+              <p className="text-xs text-muted-foreground">最大宽高 mm</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* ── 规格卡片网格 ─────────────────────────────────────────── */}
+      {/* ── 库存类型卡片网格 ─────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold">包装规格总览</h2>
+            <h2 className="text-lg font-semibold">库存类型总览</h2>
             <p className="text-xs text-muted-foreground mt-0.5">点击卡片查看详情</p>
           </div>
           <div className="flex gap-1.5">
@@ -178,11 +180,8 @@ export default function SpecsPage() {
                   <span className={`text-xs font-bold ${color.accent}`}>
                     #{spec.id}
                   </span>
-                  <Badge
-                    variant={spec.packType === "罐装" ? "default" : "secondary"}
-                    className="text-[10px] h-5"
-                  >
-                    {spec.packType}
+                  <Badge variant="secondary" className="max-w-[112px] truncate text-[10px] h-5">
+                    {spec.name}
                   </Badge>
                 </div>
 
@@ -196,10 +195,10 @@ export default function SpecsPage() {
                     <span className="text-xl font-bold tabular-nums">
                       {spec.length}
                     </span>
-                    <span className="text-xs text-muted-foreground ml-0.5">cm</span>
+                    <span className="text-xs text-muted-foreground ml-0.5">mm</span>
                   </div>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    面积 {area.toFixed(0)} cm² · 厚 {spec.thickness} cm
+                    面积 {area.toFixed(0)} mm²
                   </p>
                 </div>
 
@@ -208,13 +207,13 @@ export default function SpecsPage() {
                   <div
                     className={`rounded border border-current/10 ${color.bar} opacity-15`}
                     style={{
-                      width: `${Math.max(16, (spec.width / 17) * 60)}px`,
-                      height: `${Math.max(20, (spec.length / 25) * 48)}px`,
+                      width: `${Math.max(22, (spec.width / maxWidth) * 62)}px`,
+                      height: `${Math.max(28, (spec.length / maxHeight) * 54)}px`,
                     }}
                   />
                   <div className="flex-1 space-y-1">
                     <div className="flex justify-between text-[11px]">
-                      <span className="text-muted-foreground">品种</span>
+                      <span className="text-muted-foreground">记录</span>
                       <span className="font-medium tabular-nums">{d?.count ?? 0}</span>
                     </div>
                     <div className="flex justify-between text-[11px]">
@@ -237,20 +236,20 @@ export default function SpecsPage() {
                   <div className="mt-3 pt-3 border-t border-current/5 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-muted-foreground">薄度</span>
-                        <p className="font-mono font-medium">{spec.thinness || "—"} cm</p>
+                        <span className="text-muted-foreground">名称</span>
+                        <p className="font-medium">{spec.name}</p>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">厚度</span>
-                        <p className="font-mono font-medium">{spec.thickness} cm</p>
+                        <span className="text-muted-foreground">面积</span>
+                        <p className="font-mono font-medium">{area.toFixed(0)} mm²</p>
                       </div>
                       <div>
                         <span className="text-muted-foreground">宽度</span>
-                        <p className="font-mono font-medium">{spec.width} cm</p>
+                        <p className="font-mono font-medium">{spec.width} mm</p>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">长度</span>
-                        <p className="font-mono font-medium">{spec.length} cm</p>
+                        <span className="text-muted-foreground">高度</span>
+                        <p className="font-mono font-medium">{spec.length} mm</p>
                       </div>
                     </div>
                   </div>
@@ -277,15 +276,15 @@ export default function SpecsPage() {
             尺寸对比
           </CardTitle>
           <CardDescription>
-            所有规格按实际比例展示，直观对比种子袋大小差异
+            所有库存类型按宽高比例展示，直观对比外形尺寸差异
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-end justify-center gap-3 flex-wrap py-4">
             {SEED_SPECS.map((spec) => {
               const color = getColor(spec.id - 1);
-              const wPx = Math.max(28, Math.round((spec.width / 17) * 90));
-              const hPx = Math.max(36, Math.round((spec.length / 25) * 140));
+              const wPx = Math.max(34, Math.round((spec.width / maxWidth) * 110));
+              const hPx = Math.max(48, Math.round((spec.length / maxHeight) * 150));
 
               return (
                 <div
@@ -322,7 +321,7 @@ export default function SpecsPage() {
                   {/* 底部标签 */}
                   <div className="text-center">
                     <span className={`text-[10px] font-bold ${color.accent}`}>
-                      #{spec.id}
+                      #{spec.id} {spec.name}
                     </span>
                   </div>
                 </div>
@@ -340,7 +339,7 @@ export default function SpecsPage() {
             库存分布
           </CardTitle>
           <CardDescription>
-            各规格库存量对比 · 最大库存 {maxStock.toLocaleString()} 件
+            各库存类型库存量对比 · 最大库存 {maxStock.toLocaleString()} 件
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2.5">
@@ -355,9 +354,12 @@ export default function SpecsPage() {
                 className="group flex items-center gap-3 cursor-pointer rounded-lg px-2 py-1.5 -mx-2 transition-colors hover:bg-secondary/50"
                 onClick={() => setSelectedSpec(selectedSpec === d.specId ? null : d.specId)}
               >
-                <div className="w-14 shrink-0 flex items-center gap-1.5">
+                <div className="w-24 shrink-0 flex items-center gap-1.5">
                   <span className={`text-xs font-bold ${color.accent} tabular-nums`}>
                     #{d.specId}
+                  </span>
+                  <span className="truncate text-[11px] text-muted-foreground">
+                    {spec.name}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -372,7 +374,7 @@ export default function SpecsPage() {
                     />
                     <div className="absolute inset-0 flex items-center px-2.5">
                       <span className="text-[11px] text-foreground/70 font-medium">
-                        {spec.width}×{spec.length}cm
+                        {spec.width}×{spec.length}mm
                       </span>
                     </div>
                   </div>
@@ -384,7 +386,7 @@ export default function SpecsPage() {
                 </div>
                 <div className="w-12 shrink-0 text-right">
                   <span className="text-[11px] text-muted-foreground tabular-nums">
-                    {d.count} 种
+                    {d.count} 条
                   </span>
                 </div>
               </div>
@@ -393,15 +395,15 @@ export default function SpecsPage() {
         </CardContent>
       </Card>
 
-      {/* ── 详细规格表 ───────────────────────────────────────────── */}
+      {/* ── 详细类型表 ───────────────────────────────────────────── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Ruler className="size-4 text-muted-foreground" />
-            规格明细表
+            库存类型明细表
           </CardTitle>
           <CardDescription>
-            完整的包装规格参数信息
+            完整的库存类型、宽高尺寸与库存信息
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -409,12 +411,12 @@ export default function SpecsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-4 w-[60px]">序号</TableHead>
+                <TableHead>名称</TableHead>
                 <TableHead>尺寸</TableHead>
-                <TableHead>薄度</TableHead>
-                <TableHead>厚度</TableHead>
+                <TableHead>宽</TableHead>
+                <TableHead>高</TableHead>
                 <TableHead>面积</TableHead>
-                <TableHead>包装</TableHead>
-                <TableHead className="text-right">品种数</TableHead>
+                <TableHead className="text-right">记录数</TableHead>
                 <TableHead>库存占比</TableHead>
                 <TableHead className="text-right pr-4">库存</TableHead>
               </TableRow>
@@ -437,28 +439,23 @@ export default function SpecsPage() {
                         #{spec.id}
                       </span>
                     </TableCell>
+                    <TableCell className="font-medium">
+                      {spec.name}
+                    </TableCell>
                     <TableCell>
                       <span className="font-mono font-semibold">
                         {spec.width} × {spec.length}
                       </span>
-                      <span className="text-xs text-muted-foreground ml-0.5">cm</span>
+                      <span className="text-xs text-muted-foreground ml-0.5">mm</span>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
-                      {spec.thinness || "—"}
+                      {spec.width} mm
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {spec.thickness}
+                      {spec.length} mm
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
-                      {area.toFixed(0)} cm²
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={spec.packType === "罐装" ? "default" : "secondary"}
-                        className="text-[10px]"
-                      >
-                        {spec.packType}
-                      </Badge>
+                      {area.toFixed(0)} mm²
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums text-sm">
                       {d?.count ?? 0}

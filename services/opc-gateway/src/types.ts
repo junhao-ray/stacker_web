@@ -1,44 +1,47 @@
 import type {
-  DispatchTaskPayload,
   PlcCommand,
+  PlcCommandResult,
   PlcLastCommand,
   PlcMachineState,
+  PlcPickToBinPayload,
   PlcStatusSnapshot,
 } from "@/lib/types";
 
 export interface GatewayNodeMap {
   command: {
-    code: string;
     seq: string;
+    code: string;
     trigger: string;
   };
+  target: {
+    x: string;
+    y: string;
+    side: string;
+    qty: string;
+  };
+  trace: {
+    taskNo: string;
+    orderNo: string;
+    stepId: string;
+    productCode: string;
+    slotId: string;
+  };
   ack: {
-    lastAckSeq: string;
-    lastAckCode: string;
-    lastAckResult: string;
+    seq: string;
+    code: string;
+    result: string;
   };
   machine: {
     state: string;
-    currentTaskNo: string;
+    stepBusy: string;
+    stepDone: string;
+    currentSeq: string;
+    currentStepId: string;
+    actualX: string;
+    actualY: string;
     alarm: string;
     errorCode: string;
     errorMessage: string;
-  };
-  task: {
-    header: {
-      taskNo: string;
-      orderNo: string;
-      stepCount: string;
-    };
-    steps: Array<{
-      index: string;
-      productCode: string;
-      quantity: string;
-      side: string;
-      column: string;
-      level: string;
-      slotId: string;
-    }>;
   };
 }
 
@@ -48,6 +51,7 @@ export interface GatewayConfig {
   securityPolicy: string;
   requestedSessionTimeoutMs: number;
   ackTimeoutMs: number;
+  stepDoneTimeoutMs: number;
   reconnectIntervalMs: number;
   pulseDurationMs: number;
   pollIntervalMs: number;
@@ -62,17 +66,23 @@ export interface GatewayConfig {
 export interface PlcRuntimeSnapshot {
   machineState: PlcMachineState;
   currentTaskNo: string | null;
+  currentSeq: number | null;
+  currentStepId: string | null;
+  stepBusy: boolean;
+  stepDone: boolean;
+  actualX: number | null;
+  actualY: number | null;
   alarm: boolean;
   errorCode: string | null;
   errorMessage: string | null;
   ackSeq: number | null;
   ackCode: number | null;
-  ackResult: string | null;
+  ackResult: PlcCommandResult | string | null;
 }
 
 export interface GatewayCommandRequest {
   command: PlcCommand;
-  task?: DispatchTaskPayload;
+  payload?: PlcPickToBinPayload;
 }
 
 export interface GatewayCommandContext {
@@ -80,7 +90,7 @@ export interface GatewayCommandContext {
   requestId: string;
   seq: number;
   commandCode: number;
-  taskNo: string | null;
+  payload?: PlcPickToBinPayload;
 }
 
 export interface GatewayCommandResponse {
@@ -98,6 +108,5 @@ export interface PlcTransport {
   start(): Promise<void>;
   stop(): Promise<void>;
   getStatus(): TransportStatus;
-  writeTaskPayload(task: DispatchTaskPayload): Promise<void>;
   sendCommand(context: GatewayCommandContext): Promise<PlcLastCommand>;
 }

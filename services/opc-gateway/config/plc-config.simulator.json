@@ -1,0 +1,60 @@
+{
+  "endpointUrl": "opc.tcp://127.0.0.1:4840/UA/StackerSimulator",
+  "securityMode": "None",
+  "securityPolicy": "None",
+  "requestedSessionTimeoutMs": 20000,
+  "ackTimeoutMs": 3000,
+  "stepDoneTimeoutMs": 30000,
+  "reconnectIntervalMs": 2000,
+  "pulseDurationMs": 120,
+  "pollIntervalMs": 500,
+  "sideMapping": {
+    "left": 1,
+    "right": 2
+  },
+  "commandCodes": {
+    "pickToBin": 100,
+    "releaseBin": 110,
+    "pause": 120,
+    "resume": 130,
+    "home": 140,
+    "resetAlarm": 150
+  },
+  "nodes": {
+    "command": {
+      "seq": "ns=1;s=Stacker.Cmd_Seq",
+      "code": "ns=1;s=Stacker.Cmd_Code",
+      "trigger": "ns=1;s=Stacker.Cmd_Trigger"
+    },
+    "target": {
+      "x": "ns=1;s=Stacker.Target_X",
+      "y": "ns=1;s=Stacker.Target_Y",
+      "side": "ns=1;s=Stacker.Target_Side",
+      "qty": "ns=1;s=Stacker.Target_Qty"
+    },
+    "trace": {
+      "taskNo": "ns=1;s=Stacker.Trace_TaskNo",
+      "orderNo": "ns=1;s=Stacker.Trace_OrderNo",
+      "stepId": "ns=1;s=Stacker.Trace_StepId",
+      "productCode": "ns=1;s=Stacker.Trace_ProductCode",
+      "slotId": "ns=1;s=Stacker.Trace_SlotId"
+    },
+    "ack": {
+      "seq": "ns=1;s=Stacker.Ack_Seq",
+      "code": "ns=1;s=Stacker.Ack_Code",
+      "result": "ns=1;s=Stacker.Ack_Result"
+    },
+    "machine": {
+      "state": "ns=1;s=Stacker.Machine_State",
+      "stepBusy": "ns=1;s=Stacker.Step_Busy",
+      "stepDone": "ns=1;s=Stacker.Step_Done",
+      "currentSeq": "ns=1;s=Stacker.Current_Seq",
+      "currentStepId": "ns=1;s=Stacker.Current_StepId",
+      "actualX": "ns=1;s=Stacker.Actual_X",
+      "actualY": "ns=1;s=Stacker.Actual_Y",
+      "alarm": "ns=1;s=Stacker.Alarm",
+      "errorCode": "ns=1;s=Stacker.ErrorCode",
+      "errorMessage": "ns=1;s=Stacker.ErrorMessage"
+    }
+  }
+}

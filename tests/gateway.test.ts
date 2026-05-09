@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { DispatchTaskPayload } from "@/lib/types";
+import type { PlcPickToBinPayload } from "@/lib/types";
 import { PlcGateway } from "../services/opc-gateway/src/gateway";
-import type { GatewayConfig, PlcTransport, TransportStatus } from "../services/opc-gateway/src/types";
+import type { GatewayConfig, GatewayCommandContext, PlcTransport, TransportStatus } from "../services/opc-gateway/src/types";
 
 function createConfig(): GatewayConfig {
   return {
@@ -11,53 +11,51 @@ function createConfig(): GatewayConfig {
     securityPolicy: "None",
     requestedSessionTimeoutMs: 20000,
     ackTimeoutMs: 3000,
+    stepDoneTimeoutMs: 30000,
     reconnectIntervalMs: 2000,
     pulseDurationMs: 120,
     pollIntervalMs: 1000,
     sideMapping: { left: 1, right: 2 },
     commandCodes: {
-      dispatchTask: 10,
-      start: 20,
-      pause: 30,
-      resume: 40,
-      reset: 50,
+      pickToBin: 100,
+      releaseBin: 110,
+      pause: 120,
+      resume: 130,
+      home: 140,
+      resetAlarm: 150,
     },
     nodes: {
-      command: { code: "1", seq: "2", trigger: "3" },
-      ack: { lastAckSeq: "4", lastAckCode: "5", lastAckResult: "6" },
+      command: { seq: "1", code: "2", trigger: "3" },
+      target: { x: "4", y: "5", side: "6", qty: "7" },
+      trace: { taskNo: "8", orderNo: "9", stepId: "10", productCode: "11", slotId: "12" },
+      ack: { seq: "13", code: "14", result: "15" },
       machine: {
-        state: "7",
-        currentTaskNo: "8",
-        alarm: "9",
-        errorCode: "10",
-        errorMessage: "11",
-      },
-      task: {
-        header: { taskNo: "12", orderNo: "13", stepCount: "14" },
-        steps: [
-          { index: "15", productCode: "16", quantity: "17", side: "18", column: "19", level: "20", slotId: "21" },
-        ],
+        state: "16",
+        stepBusy: "17",
+        stepDone: "18",
+        currentSeq: "19",
+        currentStepId: "20",
+        actualX: "21",
+        actualY: "22",
+        alarm: "23",
+        errorCode: "24",
+        errorMessage: "25",
       },
     },
   };
 }
 
-function createTask(): DispatchTaskPayload {
+function createPayload(): PlcPickToBinPayload {
   return {
     taskNo: "TASK-1",
     orderNo: "ORDER-1",
-    stepCount: 1,
-    steps: [
-      {
-        index: 1,
-        productCode: "SKU-1",
-        quantity: 2,
-        side: "left",
-        column: 1,
-        level: 1,
-        slotId: "left-01-01",
-      },
-    ],
+    stepId: "STEP-1",
+    productCode: "SKU-1",
+    slotId: "left-01-01",
+    targetX: 133,
+    targetY: 111,
+    targetSide: 1,
+    targetQty: 1,
   };
 }
 
@@ -68,6 +66,12 @@ class StubTransport implements PlcTransport {
     snapshot: {
       machineState: "idle",
       currentTaskNo: null,
+      currentSeq: 0,
+      currentStepId: null,
+      stepBusy: false,
+      stepDone: false,
+      actualX: 0,
+      actualY: 0,
       alarm: false,
       errorCode: null,
       errorMessage: null,
@@ -77,7 +81,7 @@ class StubTransport implements PlcTransport {
     },
   };
 
-  writes: string[] = [];
+  contexts: GatewayCommandContext[] = [];
 
   async start() {
     return;
@@ -91,40 +95,44 @@ class StubTransport implements PlcTransport {
     return this.status;
   }
 
-  async writeTaskPayload(task: DispatchTaskPayload) {
-    this.writes.push(`task:${task.taskNo}`);
-    this.status.snapshot.currentTaskNo = task.taskNo;
-  }
-
-  async sendCommand(context: { command: string; requestId: string; seq: number; commandCode: number; taskNo: string | null; }) {
-    this.writes.push(`command:${context.command}:${context.seq}:${context.commandCode}`);
-    if (context.command === "start") {
-      this.status.snapshot.machineState = "running";
-    }
+  async sendCommand(context: GatewayCommandContext) {
+    this.contexts.push(context);
+    this.status.snapshot.ackSeq = context.seq;
+    this.status.snapshot.ackCode = context.commandCode;
+    this.status.snapshot.ackResult = "ok";
+    this.status.snapshot.currentSeq = context.seq;
+    this.status.snapshot.stepDone = true;
+    this.status.snapshot.currentTaskNo = context.payload?.taskNo ?? this.status.snapshot.currentTaskNo;
+    this.status.snapshot.currentStepId = context.payload?.stepId ?? this.status.snapshot.currentStepId;
     return {
-      command: context.command as "dispatchTask" | "start" | "pause" | "resume" | "reset",
-      taskNo: context.taskNo,
+      command: context.command,
+      taskNo: context.payload?.taskNo ?? null,
+      stepId: context.payload?.stepId ?? null,
       result: "ok" as const,
       requestId: context.requestId,
       acknowledgedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
     };
   }
 }
 
 describe("PlcGateway", () => {
-  it("writes task payload before dispatch command", async () => {
+  it("passes the single-package payload with the PickToBin command", async () => {
     const transport = new StubTransport();
     const gateway = new PlcGateway(createConfig(), transport);
+    const payload = createPayload();
 
     await gateway.execute({
-      command: "dispatchTask",
-      task: createTask(),
+      command: "pickToBin",
+      payload,
     });
 
-    expect(transport.writes).toEqual([
-      "task:TASK-1",
-      expect.stringMatching(/^command:dispatchTask:/),
-    ]);
+    expect(transport.contexts).toHaveLength(1);
+    expect(transport.contexts[0]).toMatchObject({
+      command: "pickToBin",
+      commandCode: 100,
+      payload,
+    });
   });
 
   it("rejects pause when machine is not running", async () => {
@@ -134,6 +142,17 @@ describe("PlcGateway", () => {
     await expect(gateway.execute({ command: "pause" })).rejects.toMatchObject({
       status: 409,
       code: "invalid_machine_state",
+    });
+  });
+
+  it("rejects pick commands while a step is busy", async () => {
+    const transport = new StubTransport();
+    transport.status.snapshot.stepBusy = true;
+    const gateway = new PlcGateway(createConfig(), transport);
+
+    await expect(gateway.execute({ command: "pickToBin", payload: createPayload() })).rejects.toMatchObject({
+      status: 409,
+      code: "plc_busy",
     });
   });
 });

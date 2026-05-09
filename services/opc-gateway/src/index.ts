@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { loadGatewayConfig, isGatewayConfigured } from "./config";
 import { FakePlcTransport } from "./fake-transport";
 import { PlcGateway } from "./gateway";
@@ -5,6 +7,13 @@ import { OpcUaPlcTransport } from "./opcua-transport";
 import { createGatewayServer } from "./server";
 
 async function main() {
+  if (process.argv.includes("--simulator") && !process.env.PLC_GATEWAY_CONFIG_PATH) {
+    process.env.PLC_GATEWAY_CONFIG_PATH = path.resolve(
+      process.cwd(),
+      "services/opc-gateway/config/plc-config.simulator.json",
+    );
+  }
+
   const config = loadGatewayConfig();
   const configured = isGatewayConfigured(config);
   const transportMode = process.env.PLC_GATEWAY_TRANSPORT ?? "opcua";

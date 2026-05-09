@@ -20,10 +20,11 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { buildDispatchTaskPayload, emptyPlcStatusSnapshot } from "@/lib/plc";
+import { buildPickToBinPayload, emptyPlcStatusSnapshot } from "@/lib/plc";
 import { PlcApiError, fetchPlcStatusSnapshot, sendPlcCommand } from "@/lib/plc-client";
 import { cn } from "@/lib/utils";
 import { mockTwinDataSource } from "@/lib/digital-twin";
+import { fetchRackConfig } from "@/lib/rack-config-client";
 import type {
   PlcLastCommand,
   PlcMachineState,
@@ -123,6 +124,9 @@ function plcStatusTone(state: PlcMachineState) {
 function plcCommandResultLabel(result: PlcLastCommand["result"]) {
   const labels: Record<PlcLastCommand["result"], string> = {
     ok: "成功",
+    busy: "忙碌",
+    alarm: "告警",
+    invalid_target: "目标异常",
     rejected: "拒绝",
     timeout: "超时",
     transport_error: "链路错误",
@@ -479,6 +483,7 @@ function TwinQueuePanel({
   onPause,
   onResume,
   onReplay,
+  onHome,
   onSpeedChange,
 }: {
   mode: PlcMode;
@@ -495,6 +500,7 @@ function TwinQueuePanel({
   onPause: () => void;
   onResume: () => void;
   onReplay: () => void;
+  onHome: () => void;
   onSpeedChange: (speed: PlaybackSpeed) => void;
 }) {
   const activeIndex = currentStepIndex(activeTask);
@@ -503,12 +509,11 @@ function TwinQueuePanel({
   const robotPositionLabel = robot.xColumn === RELEASE_COLUMN
     ? "释放框位置"
     : `朝向${sideLabel(robot.facingSide)}侧 · X${robot.xColumn} / Z${robot.zLevel}`;
-  const dispatchedForActiveTask = activeTask
-    ? plcStatus.currentTaskNo === activeTask.taskNo || plcPendingTaskNo === activeTask.taskNo
-    : false;
+  const allStepsCompleted = activeTask ? countCompletedSteps(activeTask) >= activeTask.steps.length : false;
   const startDisabled = mode === "simulation"
     ? !activeTask || simulationStatus === "running" || simulationStatus === "completed" || simulationStatus === "alarm"
-    : !activeTask || !plcReady || plcCommandBusy || !dispatchedForActiveTask || plcStatus.machineState === "running" || plcStatus.machineState === "alarm";
+    : !activeTask || !activeStep || !plcReady || plcCommandBusy || plcStatus.stepBusy || plcStatus.machineState === "running" || plcStatus.machineState === "alarm";
+  const releaseDisabled = !activeTask || !allStepsCompleted || !plcReady || plcCommandBusy || plcStatus.stepBusy || plcStatus.machineState === "running" || plcStatus.machineState === "alarm";
   const pauseDisabled = mode === "simulation"
     ? simulationStatus !== "running"
     : !plcReady || plcCommandBusy || plcStatus.machineState !== "running";
@@ -528,14 +533,14 @@ function TwinQueuePanel({
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {mode === "plc" ? (
-            <Button size="sm" variant="secondary" onClick={onDispatchTask} disabled={!activeTask || !plcReady || plcCommandBusy}>
+            <Button size="sm" variant="secondary" onClick={onDispatchTask} disabled={releaseDisabled}>
               <Cable className="size-3.5" />
-              下发任务
+              释放中转箱
             </Button>
           ) : null}
           <Button size="sm" onClick={onStart} disabled={startDisabled}>
             <Play className="size-3.5" />
-            开始
+            {mode === "plc" ? "执行下一包" : "开始"}
           </Button>
           <Button size="sm" variant="outline" onClick={onPause} disabled={pauseDisabled}>
             <Pause className="size-3.5" />
@@ -545,6 +550,12 @@ function TwinQueuePanel({
             <Play className="size-3.5" />
             继续
           </Button>
+          {mode === "plc" ? (
+            <Button size="sm" variant="outline" onClick={onHome} disabled={resetDisabled}>
+              <TimerReset className="size-3.5" />
+              回原点
+            </Button>
+          ) : null}
           <Button size="sm" variant="ghost" onClick={onReplay} disabled={resetDisabled}>
             <RefreshCcw className="size-3.5" />
             {mode === "simulation" ? "重播" : "复位"}
@@ -586,6 +597,9 @@ function TwinQueuePanel({
             ) : (
               <p className="mt-2 text-xs text-muted-foreground">尚未发送 PLC 命令</p>
             )}
+            {plcPendingTaskNo ? (
+              <p className="mt-1 text-xs text-muted-foreground">待同步任务：{plcPendingTaskNo}</p>
+            ) : null}
           </div>
         )}
 
@@ -700,13 +714,18 @@ function TwinStage({
     const railY = topRackY + rackHeight + rackGap / 2;
     const aisleY = topRackY + rackHeight + 18;
     const aisleHeight = rackGap - 36;
-    const cellWidth = rackWidth / config.rackColumns;
     const cellHeight = rackHeight / config.rackLevels;
     const xTrackLeft = rackLeft;
     const xTrackRight = rackLeft + rackWidth;
     const xSpan = xTrackRight - xTrackLeft;
     const stageCenterX = rackLeft + rackWidth / 2;
-    const robotX = xTrackLeft + ((animatedRobot.xColumn - 0.5) / config.rackColumns) * xSpan;
+    const activeRobotSlot = slots.find((slot) => slot.id === robot.activeSlotId) ??
+      (activeStep ? slots.find((slot) => slot.id === activeStep.slotId) : null);
+    const robotX = robot.xColumn === RELEASE_COLUMN
+      ? xTrackLeft + RELEASE_COLUMN * xSpan
+      : activeRobotSlot
+        ? rackLeft + (activeRobotSlot.xCenterMm / config.rackLengthMm) * rackWidth
+        : xTrackLeft + ((animatedRobot.xColumn - 0.5) / Math.max(1, config.rackColumns)) * xSpan;
     const levelProgress = (config.rackLevels - animatedRobot.zLevel + 0.5) / config.rackLevels;
     const topLiftY = topRackY + levelProgress * rackHeight;
     const bottomLiftY = bottomRackY + levelProgress * rackHeight;
@@ -737,7 +756,6 @@ function TwinStage({
       rackHeight,
       aisleY,
       aisleHeight,
-      cellWidth,
       cellHeight,
       xTrackLeft,
       xTrackRight,
@@ -760,30 +778,28 @@ function TwinStage({
       pickHighlight,
       suctionGlow,
     };
-  }, [animatedRobot, config, robot.phase]);
-  const highlightedColumns = useMemo(() => {
-    const columns = new Set<number>();
-    const currentColumn = Math.min(config.rackColumns, Math.max(1, Math.round(animatedRobot.xColumn)));
+  }, [activeStep, animatedRobot, config, robot.activeSlotId, robot.phase, robot.xColumn, slots]);
+  const highlightedSlots = useMemo(() => {
+    const slotIds = new Set<string>();
+    if (robot.activeSlotId) slotIds.add(robot.activeSlotId);
+    if (activeStep) slotIds.add(activeStep.slotId);
+    if (focusedSlot) slotIds.add(focusedSlot.id);
+    return Array.from(slotIds)
+      .map((slotId) => slots.find((slot) => slot.id === slotId))
+      .filter((slot): slot is TwinRackSlot => Boolean(slot));
+  }, [activeStep, focusedSlot, robot.activeSlotId, slots]);
 
-    columns.add(currentColumn);
-    if (activeStep) columns.add(activeStep.column);
-    if (focusedSlot) columns.add(focusedSlot.column);
-
-    return Array.from(columns).sort((left, right) => left - right);
-  }, [activeStep, animatedRobot.xColumn, config.rackColumns, focusedSlot]);
-
-  function getSlotCenter(side: TwinSide, column: number, level: number) {
-    const rackY = side === "left" ? stage.topRackY : stage.bottomRackY;
+  function getSlotCenter(slot: TwinRackSlot) {
+    const rackY = slot.side === "left" ? stage.topRackY : stage.bottomRackY;
 
     return {
-      x: stage.rackLeft + (column - 0.5) * stage.cellWidth,
-      y: rackY + ((config.rackLevels - level + 0.5) / config.rackLevels) * stage.rackHeight,
+      x: stage.rackLeft + (slot.xCenterMm / config.rackLengthMm) * stage.rackWidth,
+      y: rackY + ((config.rackLevels - slot.level + 0.5) / config.rackLevels) * stage.rackHeight,
     };
   }
 
-  const activeTarget = activeStep
-    ? getSlotCenter(activeStep.side, activeStep.column, activeStep.level)
-    : null;
+  const activeTargetSlot = activeStep ? slots.find((slot) => slot.id === activeStep.slotId) ?? null : null;
+  const activeTarget = activeTargetSlot ? getSlotCenter(activeTargetSlot) : null;
 
   return (
     <div className="relative min-w-[980px] overflow-hidden rounded-[26px] border border-border/70 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_42%),linear-gradient(180deg,_rgba(15,23,42,0.04),_transparent)] px-0 py-0.5 shadow-inner shadow-slate-950/5 sm:min-w-[1120px] sm:px-0.5 sm:py-1 lg:px-1 lg:py-1.5 xl:min-w-0 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_42%),linear-gradient(180deg,_rgba(15,23,42,0.32),_transparent)]">
@@ -881,18 +897,18 @@ function TwinStage({
           下侧货架
         </text>
 
-        {highlightedColumns.map((column) => {
-          const x = stage.rackLeft + (column - 1) * stage.cellWidth;
-          const labelX = x + stage.cellWidth / 2;
+        {highlightedSlots.map((slot) => {
+          const labelX = stage.rackLeft + (slot.xCenterMm / config.rackLengthMm) * stage.rackWidth;
+          const slotWidth = Math.max(10, (slot.widthMm / config.rackLengthMm) * stage.rackWidth);
           const bandY = stage.topRackY - 10;
           const bandHeight = stage.bottomRackY + stage.rackHeight - bandY + 10;
 
           return (
-            <g key={`column-highlight-${column}`}>
+            <g key={`slot-highlight-${slot.id}`}>
               <rect
-                x={x + 2}
+                x={labelX - slotWidth / 2}
                 y={bandY}
-                width={Math.max(stage.cellWidth - 4, 10)}
+                width={slotWidth}
                 height={bandHeight}
                 rx="12"
                 fill="rgba(59,130,246,0.05)"
@@ -915,7 +931,7 @@ function TwinStage({
                 fill="rgba(15,23,42,0.92)"
               />
               <text x={labelX} y={stage.bottomRackY + stage.rackHeight + 32} textAnchor="middle" className="fill-white text-[10px] font-semibold">
-                {column}
+                {slot.column}
               </text>
             </g>
           );
@@ -940,26 +956,15 @@ function TwinStage({
           );
         })}
 
-        {Array.from({ length: config.rackColumns }, (_, index) => {
-          const x = stage.rackLeft + index * stage.cellWidth;
-
-          return (
-            <g key={`column-${index + 1}`}>
-              <line x1={x} y1={stage.topRackY} x2={x} y2={stage.topRackY + stage.rackHeight} stroke="rgba(148,163,184,0.22)" strokeWidth="1.2" />
-              <line x1={x} y1={stage.bottomRackY} x2={x} y2={stage.bottomRackY + stage.rackHeight} stroke="rgba(148,163,184,0.22)" strokeWidth="1.2" />
-            </g>
-          );
-        })}
-
         {slots.map((slot) => {
           const rackY = slot.side === "left" ? stage.topRackY : stage.bottomRackY;
           const y = rackY + (config.rackLevels - slot.level) * stage.cellHeight + 4;
-          const x = stage.rackLeft + (slot.column - 1) * stage.cellWidth + 4;
-          const width = stage.cellWidth - 8;
+          const x = stage.rackLeft + (slot.xStartMm / config.rackLengthMm) * stage.rackWidth + 3;
+          const width = Math.max(6, (slot.widthMm / config.rackLengthMm) * stage.rackWidth - 6);
           const height = stage.cellHeight - 8;
           const isActive = activeStep?.slotId === slot.id;
           const isFocused = focusedSlotId === slot.id;
-          const showLabel = isActive || isFocused;
+          const showLabel = (isActive || isFocused) && width >= 24;
 
           return (
             <g key={slot.id}>
@@ -1241,7 +1246,13 @@ export default function DigitalTwinPage() {
     let ignore = false;
 
     async function load() {
-      const initialSnapshot = await mockTwinDataSource.getTwinSnapshot();
+      let initialSnapshot: TwinSnapshot;
+      try {
+        const rackConfig = await fetchRackConfig();
+        initialSnapshot = await mockTwinDataSource.getTwinSnapshot(rackConfig.value);
+      } catch {
+        initialSnapshot = await mockTwinDataSource.getTwinSnapshot();
+      }
       if (ignore) return;
 
       const currentTask = cloneTask(initialSnapshot.activeTask);
@@ -1327,23 +1338,27 @@ export default function DigitalTwinPage() {
   useEffect(() => {
     if (mode !== "plc") return;
 
-    clearTimers();
-    generationRef.current += 1;
-    setSimulationStatus("idle");
-    setAlarmMessage(null);
-    setTransferBin([]);
-    transferBinRef.current = [];
-    if (baselineSnapshot) {
-      const nextSlots = cloneSlots(baselineSnapshot.slots);
-      setSlots(nextSlots);
-      slotsRef.current = nextSlots;
-      setRobot((current) => current ? {
-        ...current,
-        phase: "idle",
-        cylinderExtended: false,
-        vacuumOn: false,
-      } : current);
-    }
+    const resetTimer = window.setTimeout(() => {
+      clearTimers();
+      generationRef.current += 1;
+      setSimulationStatus("idle");
+      setAlarmMessage(null);
+      setTransferBin([]);
+      transferBinRef.current = [];
+      if (baselineSnapshot) {
+        const nextSlots = cloneSlots(baselineSnapshot.slots);
+        setSlots(nextSlots);
+        slotsRef.current = nextSlots;
+        setRobot((current) => current ? {
+          ...current,
+          phase: "idle",
+          cylinderExtended: false,
+          vacuumOn: false,
+        } : current);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(resetTimer);
   }, [mode, baselineSnapshot]);
 
   const config = baselineSnapshot?.config;
@@ -1365,7 +1380,7 @@ export default function DigitalTwinPage() {
 
   function updatePlcStatusSnapshot(snapshot: PlcStatusSnapshot) {
     setPlcStatus(snapshot);
-    if (snapshot.lastCommand?.command === "dispatchTask" && snapshot.lastCommand.result === "ok") {
+    if (snapshot.lastCommand?.command === "pickToBin" && snapshot.lastCommand.result === "ok") {
       setPlcPendingTaskNo(snapshot.currentTaskNo);
     }
   }
@@ -1461,37 +1476,65 @@ export default function DigitalTwinPage() {
     setAlarmMessage(null);
   }
 
-  async function runPlcCommand(command: "dispatchTask" | "start" | "pause" | "resume" | "reset") {
+  async function runPlcCommand(command: "pickToBin" | "releaseBin" | "pause" | "resume" | "home" | "resetAlarm") {
     if (mode !== "plc") return;
 
     const selectedTask = activeTaskRef.current;
-    if (!selectedTask && command !== "reset") {
+    if (!selectedTask && command !== "resetAlarm" && command !== "home") {
       pushLog("warning", "当前没有可执行任务。");
       return;
     }
 
     try {
       setPlcCommandBusy(true);
-      const request = command === "dispatchTask"
+      const stepIndex = selectedTask ? currentStepIndex(selectedTask) : -1;
+      const step = stepIndex >= 0 ? selectedTask?.steps[stepIndex] : null;
+      if (command === "pickToBin" && (!selectedTask || !step)) {
+        pushLog("warning", "当前任务没有待执行的单包步骤。");
+        return;
+      }
+
+      const request = command === "pickToBin"
         ? {
             command,
-            task: buildDispatchTaskPayload(selectedTask!),
+            payload: buildPickToBinPayload(selectedTask!, step!, stepIndex),
           }
         : { command };
       const snapshot = await sendPlcCommand(request);
       updatePlcStatusSnapshot(snapshot);
 
-      if (command === "dispatchTask") {
+      if (command === "pickToBin") {
         setPlcPendingTaskNo(selectedTask?.taskNo ?? null);
-        pushLog("success", `任务 ${selectedTask?.taskNo ?? "--"} 已成功下发至 PLC。`);
-      } else if (command === "start") {
-        pushLog("info", `PLC 已接受开始命令，当前任务 ${selectedTask?.taskNo ?? "--"}。`);
+        const nextTask = setTaskStepStatus(selectedTask!, step!.id, "completed");
+        if (nextTask) {
+          activeTaskRef.current = nextTask;
+          setActiveTask(nextTask);
+          setQueue((current) => updateQueueFromTask(current, nextTask, "picking"));
+          const nextStep = currentStep(nextTask);
+          setSelectedSlotId(nextStep?.slotId ?? step!.slotId);
+        }
+        pushLog("success", `PLC 已完成单包 ${step?.id ?? "--"}。`);
+      } else if (command === "releaseBin") {
+        if (selectedTask) {
+          const completedTask = {
+            ...selectedTask,
+            status: "completed" as const,
+            completedSteps: selectedTask.steps.length,
+            steps: selectedTask.steps.map((entry) => ({ ...entry, status: "completed" as const })),
+          };
+          activeTaskRef.current = completedTask;
+          setActiveTask(completedTask);
+          setQueue((current) => updateQueueFromTask(current, completedTask, "completed"));
+        }
+        pushLog("success", `PLC 已完成任务 ${selectedTask?.taskNo ?? "--"} 的中转箱释放。`);
       } else if (command === "pause") {
         pushLog("warning", "PLC 已接受暂停命令。");
       } else if (command === "resume") {
         pushLog("info", "PLC 已接受继续命令。");
+      } else if (command === "home") {
+        pushLog("info", "PLC 已完成回原点命令。");
       } else {
-        pushLog("info", "PLC 已接受复位命令。");
+        pushLog("info", "PLC 已接受报警复位命令。");
         setPlcPendingTaskNo(null);
       }
     } catch (error) {
@@ -1508,7 +1551,6 @@ export default function DigitalTwinPage() {
       setPlcCommandBusy(false);
     }
   }
-
   function handleSelectStep(step: TwinPickStep) {
     setSelectedSlotId(step.slotId);
     pushLog("info", `已聚焦 ${step.productName}，目标 ${sideLabel(step.side)}侧 ${step.column} 列 ${step.level} 层。`);
@@ -1725,7 +1767,7 @@ export default function DigitalTwinPage() {
 
   function handleStart() {
     if (mode === "plc") {
-      void runPlcCommand("start");
+      void runPlcCommand("pickToBin");
       return;
     }
 
@@ -1792,7 +1834,7 @@ export default function DigitalTwinPage() {
 
   function handleReplay() {
     if (mode === "plc") {
-      void runPlcCommand("reset");
+      void runPlcCommand("resetAlarm");
       return;
     }
 
@@ -1979,11 +2021,12 @@ export default function DigitalTwinPage() {
               plcCommandBusy={plcCommandBusy}
               selectedSlot={selectedSlot}
               playbackSpeed={playbackSpeed}
-              onDispatchTask={() => void runPlcCommand("dispatchTask")}
+              onDispatchTask={() => void runPlcCommand("releaseBin")}
               onStart={handleStart}
               onPause={handlePause}
               onResume={handleResume}
               onReplay={handleReplay}
+              onHome={() => void runPlcCommand("home")}
               onSpeedChange={setPlaybackSpeed}
             />
             <TwinDetailPanel

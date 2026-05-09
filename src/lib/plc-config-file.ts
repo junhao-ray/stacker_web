@@ -51,11 +51,10 @@ export function normalizePlcGatewayConfigFormValue(raw: unknown): PlcGatewayConf
   const commandCodes = isObject(raw.commandCodes) ? raw.commandCodes : {};
   const nodes = isObject(raw.nodes) ? raw.nodes : {};
   const command = isObject(nodes.command) ? nodes.command : {};
+  const target = isObject(nodes.target) ? nodes.target : {};
+  const trace = isObject(nodes.trace) ? nodes.trace : {};
   const ack = isObject(nodes.ack) ? nodes.ack : {};
   const machine = isObject(nodes.machine) ? nodes.machine : {};
-  const task = isObject(nodes.task) ? nodes.task : {};
-  const header = isObject(task.header) ? task.header : {};
-  const steps = Array.isArray(task.steps) ? task.steps : defaults.nodes.task.steps;
 
   return {
     endpointUrl: readString(raw.endpointUrl, defaults.endpointUrl),
@@ -63,6 +62,7 @@ export function normalizePlcGatewayConfigFormValue(raw: unknown): PlcGatewayConf
     securityPolicy: readString(raw.securityPolicy, defaults.securityPolicy) as PlcGatewayConfigFormValue["securityPolicy"],
     requestedSessionTimeoutMs: readNumber(raw.requestedSessionTimeoutMs, defaults.requestedSessionTimeoutMs),
     ackTimeoutMs: readNumber(raw.ackTimeoutMs, defaults.ackTimeoutMs),
+    stepDoneTimeoutMs: readNumber(raw.stepDoneTimeoutMs, defaults.stepDoneTimeoutMs),
     reconnectIntervalMs: readNumber(raw.reconnectIntervalMs, defaults.reconnectIntervalMs),
     pulseDurationMs: readNumber(raw.pulseDurationMs, defaults.pulseDurationMs),
     pollIntervalMs: readNumber(raw.pollIntervalMs, defaults.pollIntervalMs),
@@ -71,48 +71,48 @@ export function normalizePlcGatewayConfigFormValue(raw: unknown): PlcGatewayConf
       right: readNumber(sideMapping.right, defaults.sideMapping.right),
     },
     commandCodes: {
-      dispatchTask: readNumber(commandCodes.dispatchTask, defaults.commandCodes.dispatchTask),
-      start: readNumber(commandCodes.start, defaults.commandCodes.start),
+      pickToBin: readNumber(commandCodes.pickToBin, defaults.commandCodes.pickToBin),
+      releaseBin: readNumber(commandCodes.releaseBin, defaults.commandCodes.releaseBin),
       pause: readNumber(commandCodes.pause, defaults.commandCodes.pause),
       resume: readNumber(commandCodes.resume, defaults.commandCodes.resume),
-      reset: readNumber(commandCodes.reset, defaults.commandCodes.reset),
+      home: readNumber(commandCodes.home, defaults.commandCodes.home),
+      resetAlarm: readNumber(commandCodes.resetAlarm, defaults.commandCodes.resetAlarm),
     },
     nodes: {
       command: {
-        code: readString(command.code),
         seq: readString(command.seq),
+        code: readString(command.code),
         trigger: readString(command.trigger),
       },
+      target: {
+        x: readString(target.x),
+        y: readString(target.y),
+        side: readString(target.side),
+        qty: readString(target.qty),
+      },
+      trace: {
+        taskNo: readString(trace.taskNo),
+        orderNo: readString(trace.orderNo),
+        stepId: readString(trace.stepId),
+        productCode: readString(trace.productCode),
+        slotId: readString(trace.slotId),
+      },
       ack: {
-        lastAckSeq: readString(ack.lastAckSeq),
-        lastAckCode: readString(ack.lastAckCode),
-        lastAckResult: readString(ack.lastAckResult),
+        seq: readString(ack.seq),
+        code: readString(ack.code),
+        result: readString(ack.result),
       },
       machine: {
         state: readString(machine.state),
-        currentTaskNo: readString(machine.currentTaskNo),
+        stepBusy: readString(machine.stepBusy),
+        stepDone: readString(machine.stepDone),
+        currentSeq: readString(machine.currentSeq),
+        currentStepId: readString(machine.currentStepId),
+        actualX: readString(machine.actualX),
+        actualY: readString(machine.actualY),
         alarm: readString(machine.alarm),
         errorCode: readString(machine.errorCode),
         errorMessage: readString(machine.errorMessage),
-      },
-      task: {
-        header: {
-          taskNo: readString(header.taskNo),
-          orderNo: readString(header.orderNo),
-          stepCount: readString(header.stepCount),
-        },
-        steps: steps.map((step) => {
-          const entry = isObject(step) ? step : {};
-          return {
-            index: readString(entry.index),
-            productCode: readString(entry.productCode),
-            quantity: readString(entry.quantity),
-            side: readString(entry.side),
-            column: readString(entry.column),
-            level: readString(entry.level),
-            slotId: readString(entry.slotId),
-          };
-        }),
       },
     },
   };

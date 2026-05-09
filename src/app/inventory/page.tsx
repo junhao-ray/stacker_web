@@ -48,10 +48,10 @@ const STOCK_STATUSES = [
 ] as const;
 
 const SPEC_OPTIONS = [
-  { value: "", label: "全部规格" },
+  { value: "", label: "全部类型" },
   ...SEED_SPECS.map((s) => ({
     value: String(s.id),
-    label: `#${s.id} ${s.width}×${s.length}cm`,
+    label: `#${s.id} ${s.name} ${s.width}×${s.length}mm`,
   })),
 ] as const;
 
@@ -108,7 +108,7 @@ export default function InventoryPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">库存管理</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          管理 {SEED_PRODUCTS.length} 个品种 · 总库存 {totalStock.toLocaleString()} 件
+          管理 {SEED_PRODUCTS.length} 种库存类型 · 总库存 {totalStock.toLocaleString()} 件
         </p>
       </div>
 
@@ -124,7 +124,7 @@ export default function InventoryPage() {
               <p className="text-2xl font-bold tabular-nums">
                 {SEED_PRODUCTS.length}
               </p>
-              <p className="text-xs text-muted-foreground">品种总数</p>
+              <p className="text-xs text-muted-foreground">类型总数</p>
             </div>
           </CardContent>
         </Card>
@@ -197,7 +197,7 @@ export default function InventoryPage() {
               库存明细
             </CardTitle>
             <CardDescription>
-              {filtered.length} 个品种
+              {filtered.length} 种库存类型
               {(stockFilter || specFilter || categoryFilter || search) && " (已筛选)"}
             </CardDescription>
           </div>
@@ -211,7 +211,7 @@ export default function InventoryPage() {
               <Input
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="搜索编码、品种名或库位号…"
+                placeholder="搜索编码、库存类型或库位号…"
                 className="pl-8"
               />
             </div>
@@ -236,10 +236,10 @@ export default function InventoryPage() {
               onValueChange={(v) => { setSpecFilter(v === "全部" ? "" : (v ?? "")); setPage(1); }}
             >
               <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder="全部规格" />
+                <SelectValue placeholder="全部类型" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="全部">全部规格</SelectItem>
+                <SelectItem value="全部">全部类型</SelectItem>
                 {SPEC_OPTIONS.filter(s => s.value !== "").map((s) => (
                   <SelectItem key={s.value} value={s.value}>
                     {s.label}
@@ -270,9 +270,9 @@ export default function InventoryPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-4">编码</TableHead>
-                <TableHead>品种名称</TableHead>
+                <TableHead>库存类型</TableHead>
                 <TableHead>类型</TableHead>
-                <TableHead>规格</TableHead>
+                <TableHead>尺寸</TableHead>
                 <TableHead>库位号</TableHead>
                 <TableHead>库存</TableHead>
                 <TableHead className="pr-4">状态</TableHead>
@@ -296,7 +296,7 @@ export default function InventoryPage() {
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       #{product.specId}{" "}
-                      {spec ? `${spec.width}×${spec.length}cm` : ""}
+                      {spec ? `${spec.width}×${spec.length}mm` : ""}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {product.location}

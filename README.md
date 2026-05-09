@@ -25,6 +25,34 @@ If you want to test the browser/API flow before现场 OPC联调, you can run the
 PLC_GATEWAY_TRANSPORT=fake npm run plc:gateway
 ```
 
+### OPC UA Simulator
+
+For local end-to-end OPC UA testing without a physical PLC, start the simulator first:
+
+```bash
+npm run plc:simulator
+```
+
+Then start the gateway with the simulator NodeId mapping:
+
+```bash
+npm run plc:gateway:simulator
+```
+
+The simulator exposes an OPC UA Server at:
+
+```text
+opc.tcp://127.0.0.1:4840/UA/StackerSimulator
+```
+
+The gateway HTTP API remains:
+
+```text
+http://127.0.0.1:4010
+```
+
+Use the app's PLC mode or call `/api/plc/status` and `/api/plc/commands` to test the full Web -> gateway -> OPC UA simulator path.
+
 ## Getting Started
 
 First, run the development server:

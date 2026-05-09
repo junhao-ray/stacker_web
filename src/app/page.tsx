@@ -34,6 +34,7 @@ import {
   WAREHOUSE_STATS,
   OUTBOUND_TASKS,
   SEED_PRODUCTS,
+  SEED_SPECS,
   getSpecDistribution,
 } from "@/lib/mock-data";
 
@@ -71,14 +72,14 @@ export default function DashboardPage() {
 
   const statCards = [
     {
-      title: "种子品种", value: stats.totalProducts.toLocaleString(),
-      subtitle: "已录入品种总数", icon: Package,
+      title: "库存类型", value: stats.totalProducts.toLocaleString(),
+      subtitle: "已录入类型总数", icon: Package,
       gradient: "from-blue-500/10 to-transparent", iconBg: "bg-blue-500/10",
       iconColor: "text-blue-600 dark:text-blue-400",
     },
     {
       title: "库存总量", value: stats.totalStock.toLocaleString(),
-      subtitle: "袋 / 罐", icon: Boxes,
+      subtitle: "件", icon: Boxes,
       gradient: "from-emerald-500/10 to-transparent", iconBg: "bg-emerald-500/10",
       iconColor: "text-emerald-600 dark:text-emerald-400",
     },
@@ -95,14 +96,14 @@ export default function DashboardPage() {
       iconColor: "text-violet-600 dark:text-violet-400",
     },
     {
-      title: "包装规格", value: stats.specCount.toString(),
-      subtitle: "种规格类型", icon: Ruler,
+      title: "尺寸类型", value: stats.specCount.toString(),
+      subtitle: "种宽高组合", icon: Ruler,
       gradient: "from-teal-500/10 to-transparent", iconBg: "bg-teal-500/10",
       iconColor: "text-teal-600 dark:text-teal-400",
     },
     {
       title: "低库存预警", value: stats.lowStockCount.toString(),
-      subtitle: "需补货品种", icon: AlertTriangle,
+      subtitle: "需补货类型", icon: AlertTriangle,
       gradient: "from-rose-500/10 to-transparent", iconBg: "bg-rose-500/10",
       iconColor: "text-rose-600 dark:text-rose-400",
     },
@@ -159,7 +160,7 @@ export default function DashboardPage() {
                 <TableRow>
                   <TableHead className="pl-4">任务编号</TableHead>
                   <TableHead>订单号</TableHead>
-                  <TableHead>品种 / 数量</TableHead>
+                  <TableHead>类型 / 数量</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="pr-4 text-right">创建时间</TableHead>
                 </TableRow>
@@ -243,10 +244,10 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Package className="size-4 text-muted-foreground" />
-                品种类型
+                库存分类
               </CardTitle>
               <CardDescription className="text-xs">
-                {CATEGORY_DIST.length} 个类型 · {TOTAL_VARIETIES} 个品种
+                {CATEGORY_DIST.length} 个分类 · {TOTAL_VARIETIES} 种库存类型
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -271,15 +272,15 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── 规格库存分布 ─────────────────────────────────────────── */}
+      {/* ── 库存类型分布 ─────────────────────────────────────────── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Ruler className="size-4 text-muted-foreground" />
-            规格库存分布
+            库存类型分布
           </CardTitle>
           <CardDescription>
-            16 种包装规格的库存量对比
+            {SEED_SPECS.length} 种库存类型的库存量对比
           </CardDescription>
         </CardHeader>
         <CardContent>

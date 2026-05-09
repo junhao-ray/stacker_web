@@ -18,48 +18,46 @@ function readNumber(value: unknown, fallback: number) {
 function normalizeNodeMap(raw: unknown): GatewayNodeMap {
   const value = isObject(raw) ? raw : {};
   const command = isObject(value.command) ? value.command : {};
+  const target = isObject(value.target) ? value.target : {};
+  const trace = isObject(value.trace) ? value.trace : {};
   const ack = isObject(value.ack) ? value.ack : {};
   const machine = isObject(value.machine) ? value.machine : {};
-  const task = isObject(value.task) ? value.task : {};
-  const header = isObject(task.header) ? task.header : {};
-  const steps = Array.isArray(task.steps) ? task.steps : [];
 
   return {
     command: {
-      code: readString(command.code),
       seq: readString(command.seq),
+      code: readString(command.code),
       trigger: readString(command.trigger),
     },
+    target: {
+      x: readString(target.x),
+      y: readString(target.y),
+      side: readString(target.side),
+      qty: readString(target.qty),
+    },
+    trace: {
+      taskNo: readString(trace.taskNo),
+      orderNo: readString(trace.orderNo),
+      stepId: readString(trace.stepId),
+      productCode: readString(trace.productCode),
+      slotId: readString(trace.slotId),
+    },
     ack: {
-      lastAckSeq: readString(ack.lastAckSeq),
-      lastAckCode: readString(ack.lastAckCode),
-      lastAckResult: readString(ack.lastAckResult),
+      seq: readString(ack.seq),
+      code: readString(ack.code),
+      result: readString(ack.result),
     },
     machine: {
       state: readString(machine.state),
-      currentTaskNo: readString(machine.currentTaskNo),
+      stepBusy: readString(machine.stepBusy),
+      stepDone: readString(machine.stepDone),
+      currentSeq: readString(machine.currentSeq),
+      currentStepId: readString(machine.currentStepId),
+      actualX: readString(machine.actualX),
+      actualY: readString(machine.actualY),
       alarm: readString(machine.alarm),
       errorCode: readString(machine.errorCode),
       errorMessage: readString(machine.errorMessage),
-    },
-    task: {
-      header: {
-        taskNo: readString(header.taskNo),
-        orderNo: readString(header.orderNo),
-        stepCount: readString(header.stepCount),
-      },
-      steps: steps.map((step) => {
-        const entry = isObject(step) ? step : {};
-        return {
-          index: readString(entry.index),
-          productCode: readString(entry.productCode),
-          quantity: readString(entry.quantity),
-          side: readString(entry.side),
-          column: readString(entry.column),
-          level: readString(entry.level),
-          slotId: readString(entry.slotId),
-        };
-      }),
     },
   };
 }
@@ -89,6 +87,7 @@ export function loadGatewayConfig(): GatewayConfig {
     securityPolicy: process.env.OPC_UA_SECURITY_POLICY ?? readString(config.securityPolicy, "None"),
     requestedSessionTimeoutMs: readNumber(config.requestedSessionTimeoutMs, 20_000),
     ackTimeoutMs: readNumber(config.ackTimeoutMs, 3_000),
+    stepDoneTimeoutMs: readNumber(config.stepDoneTimeoutMs, 30_000),
     reconnectIntervalMs: readNumber(config.reconnectIntervalMs, 2_000),
     pulseDurationMs: readNumber(config.pulseDurationMs, 120),
     pollIntervalMs: readNumber(config.pollIntervalMs, 1_000),
@@ -97,11 +96,12 @@ export function loadGatewayConfig(): GatewayConfig {
       right: readNumber(sideMapping.right, 2),
     },
     commandCodes: {
-      dispatchTask: readNumber(commandCodes.dispatchTask, 10),
-      start: readNumber(commandCodes.start, 20),
-      pause: readNumber(commandCodes.pause, 30),
-      resume: readNumber(commandCodes.resume, 40),
-      reset: readNumber(commandCodes.reset, 50),
+      pickToBin: readNumber(commandCodes.pickToBin, 100),
+      releaseBin: readNumber(commandCodes.releaseBin, 110),
+      pause: readNumber(commandCodes.pause, 120),
+      resume: readNumber(commandCodes.resume, 130),
+      home: readNumber(commandCodes.home, 140),
+      resetAlarm: readNumber(commandCodes.resetAlarm, 150),
     },
     nodes: normalizeNodeMap(config.nodes),
   };
@@ -110,25 +110,32 @@ export function loadGatewayConfig(): GatewayConfig {
 export function isGatewayConfigured(config: GatewayConfig) {
   const { nodes } = config;
   const requiredScalars = [
-    nodes.command.code,
     nodes.command.seq,
+    nodes.command.code,
     nodes.command.trigger,
-    nodes.ack.lastAckSeq,
-    nodes.ack.lastAckCode,
-    nodes.ack.lastAckResult,
+    nodes.target.x,
+    nodes.target.y,
+    nodes.target.side,
+    nodes.target.qty,
+    nodes.trace.taskNo,
+    nodes.trace.orderNo,
+    nodes.trace.stepId,
+    nodes.trace.productCode,
+    nodes.trace.slotId,
+    nodes.ack.seq,
+    nodes.ack.code,
+    nodes.ack.result,
     nodes.machine.state,
-    nodes.machine.currentTaskNo,
+    nodes.machine.stepBusy,
+    nodes.machine.stepDone,
+    nodes.machine.currentSeq,
+    nodes.machine.currentStepId,
+    nodes.machine.actualX,
+    nodes.machine.actualY,
     nodes.machine.alarm,
     nodes.machine.errorCode,
     nodes.machine.errorMessage,
-    nodes.task.header.taskNo,
-    nodes.task.header.orderNo,
-    nodes.task.header.stepCount,
   ];
 
-  if (requiredScalars.some((value) => !value)) {
-    return false;
-  }
-
-  return nodes.task.steps.length > 0 && nodes.task.steps.every((step) => Object.values(step).every(Boolean));
+  return requiredScalars.every(Boolean);
 }

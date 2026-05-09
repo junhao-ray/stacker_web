@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "plc:gateway": "tsx services/opc-gateway/src/index.ts"
+    "plc:gateway": "tsx services/opc-gateway/src/index.ts",
+    "plc:gateway:simulator": "tsx services/opc-gateway/src/index.ts --simulator",
+    "plc:simulator": "tsx services/opc-simulator/src/index.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
