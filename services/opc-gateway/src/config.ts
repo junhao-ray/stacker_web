@@ -22,6 +22,7 @@ function normalizeNodeMap(raw: unknown): GatewayNodeMap {
   const trace = isObject(value.trace) ? value.trace : {};
   const ack = isObject(value.ack) ? value.ack : {};
   const machine = isObject(value.machine) ? value.machine : {};
+  const diagnostics = isObject(value.diagnostics) ? value.diagnostics : {};
 
   return {
     command: {
@@ -58,6 +59,19 @@ function normalizeNodeMap(raw: unknown): GatewayNodeMap {
       alarm: readString(machine.alarm),
       errorCode: readString(machine.errorCode),
       errorMessage: readString(machine.errorMessage),
+    },
+    diagnostics: {
+      heartbeat: readString(diagnostics.heartbeat),
+      motionPhase: readString(diagnostics.motionPhase),
+      vacuumOn: readString(diagnostics.vacuumOn),
+      vacuumOk: readString(diagnostics.vacuumOk),
+      cylinderExtended: readString(diagnostics.cylinderExtended),
+      cylinderRetracted: readString(diagnostics.cylinderRetracted),
+      axisXInPosition: readString(diagnostics.axisXInPosition),
+      axisYInPosition: readString(diagnostics.axisYInPosition),
+      safetyOk: readString(diagnostics.safetyOk),
+      doorClosed: readString(diagnostics.doorClosed),
+      estopOk: readString(diagnostics.estopOk),
     },
   };
 }

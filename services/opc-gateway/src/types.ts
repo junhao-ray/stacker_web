@@ -43,6 +43,19 @@ export interface GatewayNodeMap {
     errorCode: string;
     errorMessage: string;
   };
+  diagnostics: {
+    heartbeat: string;
+    motionPhase: string;
+    vacuumOn: string;
+    vacuumOk: string;
+    cylinderExtended: string;
+    cylinderRetracted: string;
+    axisXInPosition: string;
+    axisYInPosition: string;
+    safetyOk: string;
+    doorClosed: string;
+    estopOk: string;
+  };
 }
 
 export interface GatewayConfig {

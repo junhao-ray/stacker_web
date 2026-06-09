@@ -55,6 +55,19 @@
       "alarm": "ns=1;s=Stacker.Alarm",
       "errorCode": "ns=1;s=Stacker.ErrorCode",
       "errorMessage": "ns=1;s=Stacker.ErrorMessage"
+    },
+    "diagnostics": {
+      "heartbeat": "ns=1;s=Stacker.Heartbeat",
+      "motionPhase": "ns=1;s=Stacker.Motion_Phase",
+      "vacuumOn": "ns=1;s=Stacker.Vacuum_On",
+      "vacuumOk": "ns=1;s=Stacker.Vacuum_OK",
+      "cylinderExtended": "ns=1;s=Stacker.Cylinder_Extended",
+      "cylinderRetracted": "ns=1;s=Stacker.Cylinder_Retracted",
+      "axisXInPosition": "ns=1;s=Stacker.AxisX_InPosition",
+      "axisYInPosition": "ns=1;s=Stacker.AxisY_InPosition",
+      "safetyOk": "ns=1;s=Stacker.Safety_OK",
+      "doorClosed": "ns=1;s=Stacker.Door_Closed",
+      "estopOk": "ns=1;s=Stacker.EStop_OK"
     }
   }
 }

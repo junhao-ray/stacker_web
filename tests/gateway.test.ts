@@ -41,6 +41,19 @@ function createConfig(): GatewayConfig {
         errorCode: "24",
         errorMessage: "25",
       },
+      diagnostics: {
+        heartbeat: "26",
+        motionPhase: "27",
+        vacuumOn: "28",
+        vacuumOk: "29",
+        cylinderExtended: "30",
+        cylinderRetracted: "31",
+        axisXInPosition: "32",
+        axisYInPosition: "33",
+        safetyOk: "34",
+        doorClosed: "35",
+        estopOk: "36",
+      },
     },
   };
 }

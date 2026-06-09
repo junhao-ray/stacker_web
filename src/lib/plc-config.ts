@@ -58,6 +58,19 @@ export interface PlcGatewayConfigFormValue {
       errorCode: string;
       errorMessage: string;
     };
+    diagnostics: {
+      heartbeat: string;
+      motionPhase: string;
+      vacuumOn: string;
+      vacuumOk: string;
+      cylinderExtended: string;
+      cylinderRetracted: string;
+      axisXInPosition: string;
+      axisYInPosition: string;
+      safetyOk: string;
+      doorClosed: string;
+      estopOk: string;
+    };
   };
 }
 
@@ -128,6 +141,19 @@ export function createDefaultPlcGatewayConfigFormValue(): PlcGatewayConfigFormVa
         errorCode: "",
         errorMessage: "",
       },
+      diagnostics: {
+        heartbeat: "",
+        motionPhase: "",
+        vacuumOn: "",
+        vacuumOk: "",
+        cylinderExtended: "",
+        cylinderRetracted: "",
+        axisXInPosition: "",
+        axisYInPosition: "",
+        safetyOk: "",
+        doorClosed: "",
+        estopOk: "",
+      },
     },
   };
 }
@@ -143,6 +169,7 @@ export function clonePlcGatewayConfigFormValue(value: PlcGatewayConfigFormValue)
       trace: { ...value.nodes.trace },
       ack: { ...value.nodes.ack },
       machine: { ...value.nodes.machine },
+      diagnostics: { ...value.nodes.diagnostics },
     },
   };
 }

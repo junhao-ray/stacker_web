@@ -9,6 +9,7 @@ import {
   Ruler,
   ShoppingCart,
   SlidersHorizontal,
+  Bug,
   Radar,
   Warehouse,
   Boxes,
@@ -55,6 +56,11 @@ const NAV_ITEMS = [
     title: "PLC配置",
     href: "/plc-config",
     icon: SlidersHorizontal,
+  },
+  {
+    title: "PLC调试",
+    href: "/plc-debug",
+    icon: Bug,
   },
   {
     title: "库存管理",

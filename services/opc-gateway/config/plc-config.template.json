@@ -55,6 +55,19 @@
       "alarm": "",
       "errorCode": "",
       "errorMessage": ""
+    },
+    "diagnostics": {
+      "heartbeat": "",
+      "motionPhase": "",
+      "vacuumOn": "",
+      "vacuumOk": "",
+      "cylinderExtended": "",
+      "cylinderRetracted": "",
+      "axisXInPosition": "",
+      "axisYInPosition": "",
+      "safetyOk": "",
+      "doorClosed": "",
+      "estopOk": ""
     }
   }
 }
