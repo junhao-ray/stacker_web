@@ -76,7 +76,6 @@ type PickPoint = {
   pickDir: string;
 };
 
-const LEGACY_DEFAULT_PREFIX = "ns=4;s=";
 const DEFAULT_PREFIX = "ns=4;s=变量表|";
 const DEFAULT_SUFFIX = "";
 const PICK_COMMAND_CODE = 1;
@@ -118,7 +117,7 @@ function statusTone(value: unknown) {
 function getStored(key: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
   const stored = window.localStorage.getItem(key);
-  if (!stored || stored === LEGACY_DEFAULT_PREFIX) return fallback;
+  if (!stored) return fallback;
   return stored;
 }
 
