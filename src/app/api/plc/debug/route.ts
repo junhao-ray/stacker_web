@@ -140,7 +140,7 @@ async function writeDebugVariable(
 ) {
   const variable = getOpcDebugVariable(name);
   if (!variable || variable.access === "read") {
-    throw new Error(`${name} is not a writable OPC debug variable.`);
+    throw new Error(`${name} 不是可写 OPC 调试变量。`);
   }
 
   const nodeId = buildOpcNodeId(variable.name, options.prefix, options.suffix);
@@ -164,7 +164,7 @@ async function writeDebugVariable(
   });
 
   if (statusCode !== StatusCodes.Good) {
-    throw new Error(`Failed to write ${name}: ${statusName(statusCode)}`);
+    throw new Error(`写入 ${name} 失败：${statusName(statusCode)}`);
   }
 }
 
@@ -212,7 +212,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return NextResponse.json({
       code: "opc_debug_read_failed",
-      message: error instanceof Error ? error.message : "OPC debug read failed",
+      message: error instanceof Error ? error.message : "OPC 调试变量读取失败",
       endpointUrl,
     }, { status: 502 });
   } finally {
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json({
       code: "opc_debug_write_failed",
-      message: error instanceof Error ? error.message : "OPC debug write failed",
+      message: error instanceof Error ? error.message : "OPC 调试变量写入失败",
       endpointUrl,
     }, { status: 502 });
   } finally {
