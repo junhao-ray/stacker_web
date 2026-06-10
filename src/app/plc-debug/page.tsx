@@ -206,6 +206,7 @@ export default function PlcDebugPage() {
   const [customCode, setCustomCode] = useState("1");
   const [pulseMs, setPulseMs] = useState("250");
   const [timingDirty, setTimingDirty] = useState(false);
+  const [timingEnabled, setTimingEnabled] = useState(false);
   const [timingValues, setTimingValues] = useState<Record<string, string>>(() => {
     return Object.fromEntries(OPC_DEBUG_TIMING_FIELDS.map((field) => [field.name, String(field.defaultValue)]));
   });
@@ -221,12 +222,17 @@ export default function PlcDebugPage() {
   useEffect(() => {
     setPrefix(getStored("stacker.opcDebug.prefix", DEFAULT_PREFIX));
     setSuffix(getStored("stacker.opcDebug.suffix", DEFAULT_SUFFIX));
+    setTimingEnabled(window.localStorage.getItem("stacker.opcDebug.timingEnabled") === "true");
   }, []);
 
   useEffect(() => {
     window.localStorage.setItem("stacker.opcDebug.prefix", prefix);
     window.localStorage.setItem("stacker.opcDebug.suffix", suffix);
   }, [prefix, suffix]);
+
+  useEffect(() => {
+    window.localStorage.setItem("stacker.opcDebug.timingEnabled", String(timingEnabled));
+  }, [timingEnabled]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("stacker.opcDebug.pickPoints");
@@ -279,7 +285,7 @@ export default function PlcDebugPage() {
   }, [byName, timingDirty]);
 
   const requestDebug = useCallback(async (options: RequestInit & { url?: string } = {}) => {
-    const query = new URLSearchParams({ prefix, suffix });
+    const query = new URLSearchParams({ prefix, suffix, includeTiming: String(timingEnabled) });
     const response = await fetch(options.url ?? `/api/plc/debug?${query.toString()}`, {
       cache: "no-store",
       ...options,
@@ -290,7 +296,7 @@ export default function PlcDebugPage() {
     }
     setPayload(body as DebugPayload);
     return body as DebugPayload;
-  }, [prefix, suffix]);
+  }, [prefix, suffix, timingEnabled]);
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) {
@@ -332,7 +338,7 @@ export default function PlcDebugPage() {
         url: "/api/plc/debug",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prefix, suffix, writes }),
+        body: JSON.stringify({ prefix, suffix, includeTiming: timingEnabled, writes }),
       });
       setMessage(`${label} 已写入`);
     } catch (writeError) {
@@ -354,7 +360,7 @@ export default function PlcDebugPage() {
         url: "/api/plc/debug",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prefix, suffix, writes }),
+        body: JSON.stringify({ prefix, suffix, includeTiming: true, writes }),
       });
       setMessage("动作间隔已写入");
       setTimingDirty(false);
@@ -410,7 +416,7 @@ export default function PlcDebugPage() {
       url: "/api/plc/debug",
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prefix, suffix, pulse }),
+      body: JSON.stringify({ prefix, suffix, includeTiming: timingEnabled, pulse }),
     });
   }
 
@@ -908,9 +914,18 @@ export default function PlcDebugPage() {
 
             <Card className="border-border/70 bg-card/90">
               <CardHeader>
-                <div className="flex items-center gap-2">
-                  <RefreshCcw className="size-4 text-muted-foreground" />
-                  <h2 className="text-base font-semibold">动作间隔</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <RefreshCcw className="size-4 text-muted-foreground" />
+                    <h2 className="text-base font-semibold">动作间隔</h2>
+                  </div>
+                  <Button
+                    disabled={loading || writing !== null}
+                    onClick={() => setTimingEnabled((value) => !value)}
+                    variant={timingEnabled ? "secondary" : "outline"}
+                  >
+                    {timingEnabled ? "停止读取" : "读取动作间隔"}
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -921,9 +936,12 @@ export default function PlcDebugPage() {
                       <div key={field.name} className="space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <label className="text-xs font-medium text-muted-foreground">{field.label}</label>
-                          <Badge variant={variable?.ok ? "outline" : "destructive"}>{statusText(variable?.status)}</Badge>
+                          <Badge variant={timingEnabled && !variable?.ok ? "destructive" : "outline"}>
+                            {timingEnabled ? statusText(variable?.status) : "未读取"}
+                          </Badge>
                         </div>
                         <Input
+                          disabled={!timingEnabled}
                           type="number"
                           min={50}
                           max={10000}
@@ -941,7 +959,7 @@ export default function PlcDebugPage() {
                   })}
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Button disabled={writing !== null} onClick={writeTimings} className="gap-2">
+                  <Button disabled={writing !== null || !timingEnabled} onClick={writeTimings} className="gap-2">
                     {writing === "动作间隔" ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                     写入间隔
                   </Button>
@@ -970,8 +988,12 @@ export default function PlcDebugPage() {
                   {renderVariableTable(parameterVariables)}
                 </div>
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold">动作间隔</h3>
-                  {renderVariableTable(timingVariables)}
+                  {timingEnabled && timingVariables.length > 0 ? (
+                    <>
+                      <h3 className="mb-2 text-sm font-semibold">动作间隔</h3>
+                      {renderVariableTable(timingVariables)}
+                    </>
+                  ) : null}
                 </div>
                 <div>
                   <h3 className="mb-2 text-sm font-semibold">状态</h3>

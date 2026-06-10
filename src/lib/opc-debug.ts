@@ -19,6 +19,13 @@ export const OPC_DEBUG_TIMING_FIELDS = [
   { name: "OPC_T_FlipBackMs", label: "卸料翻转复位", defaultValue: 800 },
 ] as const;
 
+export const OPC_DEBUG_TIMING_VARIABLES: OpcDebugVariable[] = OPC_DEBUG_TIMING_FIELDS.map((field) => ({
+  name: field.name,
+  dataType: "INT" as const,
+  access: "readwrite" as const,
+  role: "timing" as const,
+}));
+
 export const OPC_DEBUG_VARIABLES: OpcDebugVariable[] = [
   { name: "OPC_CmdReq", dataType: "BOOL", access: "readwrite", role: "command" },
   { name: "OPC_CmdAck", dataType: "BOOL", access: "read", role: "status" },
@@ -31,17 +38,16 @@ export const OPC_DEBUG_VARIABLES: OpcDebugVariable[] = [
   { name: "OPC_TargetZ", dataType: "REAL", access: "readwrite", role: "parameter" },
   { name: "OPC_PickQty", dataType: "INT", access: "readwrite", role: "parameter" },
   { name: "OPC_PickDir", dataType: "INT", access: "readwrite", role: "parameter" },
-  ...OPC_DEBUG_TIMING_FIELDS.map((field) => ({
-    name: field.name,
-    dataType: "INT" as const,
-    access: "readwrite" as const,
-    role: "timing" as const,
-  })),
   { name: "OPC_ServoOn", dataType: "BOOL", access: "readwrite", role: "command" },
   { name: "OPC_Busy", dataType: "BOOL", access: "read", role: "status" },
   { name: "OPC_Ready", dataType: "BOOL", access: "read", role: "status" },
   { name: "OPC_X_ActualPos", dataType: "REAL", access: "read", role: "status" },
   { name: "OPC_Z_ActualPos", dataType: "REAL", access: "read", role: "status" },
+];
+
+export const OPC_DEBUG_ALL_VARIABLES: OpcDebugVariable[] = [
+  ...OPC_DEBUG_VARIABLES,
+  ...OPC_DEBUG_TIMING_VARIABLES,
 ];
 
 export const OPC_DEBUG_COMMAND_PRESETS = [
@@ -54,7 +60,7 @@ export const OPC_DEBUG_COMMAND_PRESETS = [
 ] as const;
 
 export function getOpcDebugVariable(name: string) {
-  return OPC_DEBUG_VARIABLES.find((variable) => variable.name === name);
+  return OPC_DEBUG_ALL_VARIABLES.find((variable) => variable.name === name);
 }
 
 export function buildOpcNodeId(name: string, prefix: string, suffix: string) {

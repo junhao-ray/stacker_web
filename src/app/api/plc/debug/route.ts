@@ -12,6 +12,7 @@ import {
 import {
   buildOpcNodeId,
   getOpcDebugVariable,
+  OPC_DEBUG_ALL_VARIABLES,
   OPC_DEBUG_VARIABLES,
   type OpcDebugDataType,
 } from "@/lib/opc-debug";
@@ -22,11 +23,13 @@ export const runtime = "nodejs";
 type DebugNodeOptions = {
   prefix: string;
   suffix: string;
+  includeTiming: boolean;
 };
 
 type DebugWriteRequest = {
   prefix?: string;
   suffix?: string;
+  includeTiming?: boolean;
   writes?: Record<string, unknown>;
   pulse?: {
     commandCode?: unknown;
@@ -68,12 +71,14 @@ function normalizeOptions(request: NextRequest | DebugWriteRequest): DebugNodeOp
     return {
       prefix: request.nextUrl.searchParams.get("prefix") ?? DEFAULT_NODE_PREFIX,
       suffix: request.nextUrl.searchParams.get("suffix") ?? "",
+      includeTiming: request.nextUrl.searchParams.get("includeTiming") === "true",
     };
   }
 
   return {
     prefix: typeof request.prefix === "string" ? request.prefix : DEFAULT_NODE_PREFIX,
     suffix: typeof request.suffix === "string" ? request.suffix : "",
+    includeTiming: request.includeTiming === true,
   };
 }
 
@@ -113,13 +118,14 @@ async function closeSession(client: OPCUAClient, session?: ClientSession) {
 }
 
 async function readDebugVariables(session: ClientSession, options: DebugNodeOptions) {
-  const nodes = OPC_DEBUG_VARIABLES.map((variable) => ({
+  const variables = options.includeTiming ? OPC_DEBUG_ALL_VARIABLES : OPC_DEBUG_VARIABLES;
+  const nodes = variables.map((variable) => ({
     nodeId: buildOpcNodeId(variable.name, options.prefix, options.suffix),
     attributeId: AttributeIds.Value,
   }));
   const values = await session.read(nodes);
 
-  return OPC_DEBUG_VARIABLES.map((variable, index) => {
+  return variables.map((variable, index) => {
     const dataValue = Array.isArray(values) ? values[index] : values;
     const ok = dataValue.statusCode === StatusCodes.Good;
     return {
